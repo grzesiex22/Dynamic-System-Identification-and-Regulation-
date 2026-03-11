@@ -40,13 +40,13 @@ t_test = np.arange(0, t_end, dt)
 u_test = np.array([u_func_test(ti) for ti in t_test]).reshape(-1,1)
 
 y_sim = mlp.simulate(u_new=u_test, y0=y0[0], dt=dt)
+dy_dt_sim = np.gradient(y_sim, dt)
 
 # Obliczamy prawdziwe y(t) dla porównania
 generator_test = DataGenerator(f=f, y0=y0, u_func=u_func_test, t_end=t_end, dt=dt)
 true_data = generator_test.generate()
 y_true = true_data.y
 dy_dt_true = true_data.dy_dt
-dy_dt_sim = np.gradient(y_sim, dt)
 
 # -----------------------------
 # 5. Wykres porównawczy
