@@ -1,4 +1,4 @@
-# created by virtualenv automatically
+
 .idea/                # całe ustawienia IDE (często ignoruje się całe .idea)
 *.iml                 # moduły IDE
 __pycache__/
