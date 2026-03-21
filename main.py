@@ -3,16 +3,8 @@ import matplotlib.pyplot as plt
 
 from DataGenerator import DataGenerator
 from CoupledTanks import CoupledTanks1
-from ImplementationOfMLP import (
-    SystemMLP,
-    train_model,
-    predict,
-    simulate,
-    mse,
-    rmse,
-    mae,
-    r2,
-)
+from ImplementationOfMLP import SystemMLP, Metrics
+
 
 # -----------------------------
 # 1. Definicja sygnału sterującego
@@ -28,12 +20,10 @@ def my_u(t):
 # -----------------------------
 # 2. Funkcja pomocnicza do wypisywania metryk
 # -----------------------------
-def print_metrics(title, y_true, y_pred):
+def print_metrics(title, metrics):
     print(f"\n=== {title} ===")
-    print(f"MSE  : {mse(y_true, y_pred):.8f}")
-    print(f"RMSE : {rmse(y_true, y_pred):.8f}")
-    print(f"MAE  : {mae(y_true, y_pred):.8f}")
-    print(f"R2   : {r2(y_true, y_pred):.8f}")
+    for key, value in metrics.items():
+        print(f"{key}: {value:.8f}")
 
 
 # -----------------------------
@@ -72,14 +62,16 @@ mlp = SystemMLP(
     output_dim=2
 )
 
+mlp.summary()
+
 print("\nTraining MLP...")
-mlp = train_model(
-    mlp,
+mlp.train(
     X_train,
     y_target_train,
     epochs=2000,
     lr=0.001,
     val_ratio=0.2,
+    shuffle=True,
     print_every=100
 )
 
@@ -87,8 +79,9 @@ mlp = train_model(
 # -----------------------------
 # 6. Ewaluacja predykcji pochodnych
 # -----------------------------
-dy_dt_pred = predict(mlp, X_train)
-print_metrics("Metryki predykcji pochodnych dy/dt", y_target_train, dy_dt_pred)
+dy_dt_pred = mlp.predict(X_train)
+derivative_metrics = Metrics.evaluate(y_target_train, dy_dt_pred)
+print_metrics("Metryki predykcji pochodnych dy/dt", derivative_metrics)
 
 
 # -----------------------------
@@ -97,8 +90,9 @@ print_metrics("Metryki predykcji pochodnych dy/dt", y_target_train, dy_dt_pred)
 def u_func_test(t):
     return my_u(t)
 
+
 t_test = np.arange(0, t_end, dt)
-u_test = np.array([u_func_test(ti) for ti in t_test], dtype=np.float32).reshape(-1, 1)
+u_test = np.array([u_func_test(ti) for ti in t_test], dtype=np.float64).reshape(-1, 1)
 
 print("\nGenerating test data...")
 generator_test = DataGenerator(tanks, u_func_test, dt=dt)
@@ -117,7 +111,7 @@ print(f"y0_test      = {y0_test}")
 # 8. Symulacja rekurencyjna MLP
 # -----------------------------
 print("\nRunning recursive simulation...")
-y_sim = simulate(mlp, u_new=u_test, y0=y0_test, dt=dt)
+y_sim = mlp.simulate(u_new=u_test, y0=y0_test, dt=dt)
 
 print(f"y_sim shape = {y_sim.shape}")
 
@@ -125,7 +119,8 @@ print(f"y_sim shape = {y_sim.shape}")
 # -----------------------------
 # 9. Metryki symulacji
 # -----------------------------
-print_metrics("Metryki symulacji wielokrokowej", y_true, y_sim)
+simulation_metrics = Metrics.evaluate(y_true, y_sim)
+print_metrics("Metryki symulacji wielokrokowej", simulation_metrics)
 
 
 # -----------------------------
@@ -143,7 +138,7 @@ print(y_sim[:5])
 # 11. Predykcja pochodnych do porównania
 # -----------------------------
 X_all, dy_dt_true = train_data.get_training_data()
-dy_dt_pred = predict(mlp, X_all)
+dy_dt_pred = mlp.predict(X_all)
 
 t_der = train_data.t[:-1]
 
