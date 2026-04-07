@@ -1,0 +1,134 @@
+{
+    "metadata": {
+        "date": "2026-04-08 00:04:04",
+        "filename": "test_dataset_20.npz",
+        "total_trajectories": 20,
+        "samples_per_trajectory": 1998,
+        "input_dim": 5,
+        "output_dim": 2,
+        "dt": 0.5,
+        "t_end": 1000,
+        "system_object": "CoupledTanks1"
+    },
+    "statistics": {
+        "aprbs": 4,
+        "multisine": 2,
+        "noise": 14
+    },
+    "configuration": {
+        "aprbs": {
+            "h_min_range": [
+                50,
+                150
+            ],
+            "h_add_range": [
+                100,
+                300
+            ]
+        },
+        "multisine": {
+            "n_freqs_range": [
+                5,
+                15
+            ],
+            "f_max_range": [
+                0.005,
+                0.02
+            ]
+        },
+        "noise": {
+            "cutoff_range": [
+                0.001,
+                0.01
+            ]
+        }
+    },
+    "trajectory_details": [
+        {
+            "type": "noise",
+            "cutoff": 0.004231470915752451
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.006798383340247414
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 14,
+            "f_max": 0.015795218665914046
+        },
+        {
+            "type": "aprbs",
+            "h_min": 82,
+            "h_max": 314
+        },
+        {
+            "type": "aprbs",
+            "h_min": 111,
+            "h_max": 318
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.0058660657956532206
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.008799859391266405
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 8,
+            "f_max": 0.019756001829867295
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.0013924664694869313
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.0028426224322054662
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.006643925141222802
+        },
+        {
+            "type": "aprbs",
+            "h_min": 96,
+            "h_max": 240
+        },
+        {
+            "type": "aprbs",
+            "h_min": 96,
+            "h_max": 334
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.00352548599620288
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.006949064379698119
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.0044005649130552755
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.005606459839629269
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.0016543122216001488
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.009200383079811025
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.008984405009946624
+        }
+    ]
+}

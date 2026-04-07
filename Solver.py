@@ -1,5 +1,5 @@
 from scipy.integrate import solve_ivp
-from DynamicObject import DynamicObject
+from Objects.DynamicObject import DynamicObject
 
 
 class Solver:

@@ -2,45 +2,6 @@ import numpy as np
 import copy
 
 
-class Metrics:
-    @staticmethod
-    def mse(y_true, y_pred):
-        y_true = np.asarray(y_true)
-        y_pred = np.asarray(y_pred)
-        return float(np.mean((y_true - y_pred) ** 2))
-
-    @staticmethod
-    def rmse(y_true, y_pred):
-        return float(np.sqrt(Metrics.mse(y_true, y_pred)))
-
-    @staticmethod
-    def mae(y_true, y_pred):
-        y_true = np.asarray(y_true)
-        y_pred = np.asarray(y_pred)
-        return float(np.mean(np.abs(y_true - y_pred)))
-
-    @staticmethod
-    def r2(y_true, y_pred):
-        y_true = np.asarray(y_true)
-        y_pred = np.asarray(y_pred)
-
-        ss_res = np.sum((y_true - y_pred) ** 2)
-        ss_tot = np.sum((y_true - np.mean(y_true, axis=0)) ** 2)
-
-        if ss_tot == 0:
-            return 0.0
-
-        return float(1.0 - ss_res / ss_tot)
-
-    @staticmethod
-    def evaluate(y_true, y_pred):
-        return {
-            "mse": Metrics.mse(y_true, y_pred),
-            "rmse": Metrics.rmse(y_true, y_pred),
-            "mae": Metrics.mae(y_true, y_pred),
-            "r2": Metrics.r2(y_true, y_pred),
-        }
-
 
 class OwnSystemMLP:
     def __init__(self, input_dim=3, hidden_layers=None, output_dim=2, seed=42):
@@ -256,6 +217,7 @@ class OwnSystemMLP:
 
     def simulate(self, u_new, y0, dt):
         u_new = np.asarray(u_new, dtype=np.float64)
+        dy_dt_pred = []
 
         if u_new.ndim == 1:
             u_new = u_new.reshape(-1, 1)
@@ -282,11 +244,12 @@ class OwnSystemMLP:
                     f"Podczas symulacji wejście ma wymiar {x_input.shape[1]}, "
                     f"a model oczekuje {self.input_dim}."
                 )
-
+            # dy_dt_pred.append(self.predict(x_input).flatten())
             dy_dt_pred = self.predict(x_input).flatten()
             y_sim[i] = y_prev + dy_dt_pred * dt
             y_sim[i] = np.maximum(y_sim[i], 0.0)
 
+        # return y_sim, dy_dt_pred
         return y_sim
 
     def evaluate_derivatives(self, data):

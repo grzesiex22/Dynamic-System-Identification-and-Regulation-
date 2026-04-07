@@ -2,32 +2,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from SystemData import SystemData
+from tqdm import tqdm
 
 
 class SystemMLP:
-    """
-    Model sieci neuronowej typu Multi-Layer Perceptron (MLP) do identyfikacji dynamiki systemów.
-
-    Sieć pełni rolę uniwersalnego aproksymatora funkcji przejścia systemu. Uczy się
-    wyznaczać pochodne stanów (dy/dt) na podstawie aktualnego wymuszenia (u)
-    oraz obecnego stanu (y).
-    """
-
-    def __init__(self, input_dim=3, hidden_dim=32, output_dim=2):
-        """
-        Konstruuje architekturę sieci neuronowej.
-
-        Args:
-            input_dim (int): Wymiar wejścia. Dla układu zbiorników: u + h1 + h2 = 3.
-            hidden_dim (int): Liczba neuronów w warstwach ukrytych.
-            output_dim (int): Wymiar wyjścia (liczba przewidywanych pochodnych).
-
-        Note:
-            Zastosowano funkcję Tanh zamiast ReLU, ponieważ Tanh jest funkcją gładką
-            i różniczkowalną w każdym punkcie, co lepiej oddaje ciągły charakter
-            zjawisk fizycznych (jak przepływ cieczy).
-        """
+    def __init__(self, input_dim=5, hidden_dim=128, output_dim=2):
         self.model = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.Tanh(),
@@ -37,78 +16,97 @@ class SystemMLP:
         )
         self.output_dim = output_dim
 
-    def train(self, data:SystemData, lr=0.001, epochs=3000, print_every=500):
-        """
-        Przeprowadza proces uczenia nadzorowanego (Supervised Learning).
+    def train(self, X_train, y_train, X_val, y_val, lr=0.001, epochs=100):
+        # X_train: (1000, 1998, 5)
+        # y_train: (1000, 1998, 2)
 
-        Args:
-            data (SystemData): Obiekt z danymi treningowymi.
-            lr (float): Współczynnik uczenia (Learning Rate).
-            epochs (int): Liczba epok (iteracji optymalizatora).
-            print_every (int): Częstotliwość raportowania błędu MSE w konsoli.
-
-        Process:
-            1. Pobranie danych zsynchronizowanych czasowo [u(k), y(k)] -> [dy/dt(k)].
-            2. Minimalizacja błędu średniokwadratowego (MSE) za pomocą algorytmu Adam.
-        """
-        X, y_target = data.get_training_data()
-
-        X_tensor = torch.tensor(X, dtype=torch.float32)
-        y_tensor = torch.tensor(y_target, dtype=torch.float32)
-
-        criterion = nn.MSELoss()
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        criterion = nn.MSELoss()
 
-        print(f"Rozpoczęcie treningu modelu: {epochs} epok...")
-        for epoch in range(epochs):
-            optimizer.zero_grad()  # Resetowanie gradientów
-            y_pred = self.model(X_tensor)  # Propagacja w przód
-            loss = criterion(y_pred, y_tensor)  # Obliczanie błędu
-            loss.backward()  # Propagacja wsteczna (backpropagation)
-            optimizer.step()  # Aktualizacja wag
+        X_val_t = torch.tensor(X_val, dtype=torch.float32)
+        y_val_t = torch.tensor(y_val, dtype=torch.float32)
 
-            if epoch % print_every == 0:
-                print(f"Epoka {epoch}, Strata (MSE): {loss.item():.8f}")
+        # Inicjalizacja paska tqdm
+        pbar = tqdm(range(epochs), desc="Trening MLP")
 
-    def simulate(self, u_new, y0, dt):
+        print(f"Start treningu: {epochs} epok, 1000 trajektorii na epokę.")
+
+        for epoch in pbar:
+            self.model.train()
+            epoch_loss = 0
+
+            # Pętla po KAŻDEJ trajektorii osobno
+            for i in range(X_train.shape[0]):
+                # Wyciągamy jedną całą trajektorię (1998, 5)
+                x_traj = torch.tensor(X_train[i], dtype=torch.float32)
+                y_traj = torch.tensor(y_train[i], dtype=torch.float32)
+
+                optimizer.zero_grad()
+                y_pred = self.model(x_traj)
+                loss = criterion(y_pred, y_traj)
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item()
+
+            # Obliczanie średniego błędu
+            avg_train_loss = epoch_loss / X_train.shape[0]
+
+            # Walidacja raz na epokę na całym zbiorze walidacyjnym
+            if epoch % 10 == 0:
+                self.model.eval()
+                with torch.no_grad():
+                    # Walidacja też trajektoria po trajektorii dla czystości
+                    v_pred = self.model(X_val_t)
+                    v_loss = criterion(v_pred, y_val_t)
+
+                avg_loss = epoch_loss / X_train.shape[0]
+                print(f"Epoka {epoch} | Średni Train MSE: {avg_loss:.8f} | Val MSE: {v_loss.item():.8f}")
+
+            # AKTUALIZACJA PASKA: dodajemy info o błędzie na końcu paska
+            pbar.set_postfix({
+                "Loss": f"{avg_train_loss:.6f}",
+                "Val": f"{v_loss.item():.6f}"
+            })
+
+    def simulate(self, u_new, h0, dt):
         """
-        Wykonuje predykcję wielokrokową (symulację rekurencyjną).
-
-        Jest to kluczowy test modelu: sieć nie dostaje prawdziwych stanów y w każdym
-        kroku, lecz bazuje na własnych, wcześniej przewidzianych wartościach.
-        Pozwala to ocenić, czy model poprawnie "zrozumiał" dynamikę obiektu.
+        Symulacja rekurencyjna systemu zbiorników.
 
         Args:
-            u_new (np.ndarray): Macierz wymuszeń testowych [N x 1].
-            y0 (np.ndarray): Stan początkowy [h1, h2].
-            dt (float): Krok integracji numerycznej (zgodny z obiektem).
-
-        Returns:
-            np.ndarray: Symulowana trajektoria stanów systemu [N x output_dim].
+            u_new (np.ndarray): Sterowanie [N x 1]
+            h0 (np.ndarray): Początkowe poziomy [h1, h2]
+            dt (float): Krok próbkowania
         """
         n_points = len(u_new)
-        y_sim = np.zeros((n_points, self.output_dim))
-        y_sim[0] = y0
+        h_sim = np.zeros((n_points, self.output_dim))
+        dh_dt_sim = np.zeros((n_points, self.output_dim))
 
-        self.model.eval()  # Wyłączenie mechanizmów treningowych (np. Dropout)
-        with torch.no_grad():  # Wyłączenie śledzenia gradientów (oszczędność pamięci i czasu)
+        h_sim[0] = h0
+        dh_dt_prev = np.zeros(self.output_dim)
+
+        self.model.eval()
+        with torch.no_grad():
             for i in range(1, n_points):
-                # 1. Budowa wektora wejściowego z obecnego sterowania i poprzedniej predykcji
-                u_curr = u_new[i - 1]
-                y_prev = y_sim[i - 1]
+                # Wejście: [u(k), h(k-1), dh_dt(k-1)]
+                x_input = np.concatenate([
+                    u_new[i],  # u(k)
+                    h_sim[i - 1],  # h(k-1)
+                    dh_dt_prev  # dh_dt(k-1)
+                ]).astype(np.float32)
 
-                # 2. Przygotowanie tensora wejściowego [batch_size=1, input_dim]
-                x_input = np.concatenate([u_curr, y_prev]).astype(np.float32)
                 x_tensor = torch.tensor(x_input).unsqueeze(0)
 
-                # 3. Predykcja pochodnych (dy/dt) przez sieć neuronową
-                dy_dt_pred = self.model(x_tensor).numpy().flatten()
+                # Model przewiduje AKTUALNĄ pochodną dh_dt(k)
+                dh_dt_curr = self.model(x_tensor).numpy().flatten()
+                dh_dt_sim[i] = dh_dt_curr
 
-                # 4. Integracja metodą Eulera (wyznaczenie stanu w następnej chwili czasu)
-                # y(k) = y(k-1) + f_NN(y(k-1), u(k-1)) * dt
-                y_sim[i] = y_sim[i - 1] + dy_dt_pred * dt
+                # Całkowanie (Euler): h(k) = h(k-1) + dh_dt(k) * dt
+                h_sim[i] = h_sim[i - 1] + dh_dt_curr * dt
 
-                # 5. Zabezpieczenie przed wartościami nierealnymi fizycznie (h < 0)
-                y_sim[i] = np.maximum(y_sim[i], 0)
+                # Ograniczenie fizyczne (brak ujemnych poziomów)
+                h_sim[i] = np.maximum(h_sim[i], 0)
 
-        return y_sim
+                # Aktualizacja trendu do następnego kroku
+                dh_dt_prev = dh_dt_curr
+
+        return h_sim, dh_dt_sim
