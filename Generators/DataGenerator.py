@@ -6,11 +6,11 @@ from Objects.DynamicObject import DynamicObject
 
 class DataGenerator:
     """
-    Klasa odpowiedzialna za symulację numeryczną obiektów dynamicznych.
+    Klasa odpowiedzialna za symulację numeryczną obiektów dynamicznych (Silnik Symulacyjny).
 
-    Wykorzystuje zaawansowane algorytmy całkowania równań różniczkowych
-    zwyczajnych (ODE) do generowania trajektorii stanów systemu w odpowiedzi
-    na zadany sygnał wymuszenia.
+    Wykorzystuje zaawansowane algorytmy całkowania równań różniczkowych zwyczajnych (ODE)
+    do generowania trajektorii stanów systemu (tzw. Ground Truth) w odpowiedzi na zadany
+    sygnał wymuszenia u(t).
     """
 
     def __init__(self, obj: DynamicObject, u_func, dt=0.1):
@@ -19,12 +19,12 @@ class DataGenerator:
 
         Args:
             obj (DynamicObject): Instancja klasy obiektu (np. CoupledTanks1),
-                która definiuje równania stanu dx/dt.
-            u_func (callable): Funkcja czasu zwracająca wartość sterowania u(t).
-                Może to być funkcja stała, sinusoidalna lub losowa (APRBS).
-            dt (float): Krok próbkowania (odstęp czasu między kolejnymi
-                punktami w wygenerowanym zbiorze danych).
+                definiująca fizykę systemu poprzez funkcję przejścia f(t, x, u).
+            u_func (callable): Funkcja czasu (np. obiekt klasy APRBSSignal),
+                zwracająca wartość sterowania u dla zadanej chwili t.
+            dt (float): Krok próbkowania wyjściowego zbioru danych [s].
         """
+
         self.obj = obj
         self.u_func = u_func
         self.dt = dt
@@ -33,16 +33,17 @@ class DataGenerator:
 
     def generate(self):
         """
-        Przeprowadza proces całkowania numerycznego metodą Rungego-Kutty (RK45).
+        Przeprowadza proces całkowania numerycznego metodą adaptacyjną Rungego-Kutty (RK45).
 
-        Metoda ta "rozwiązuje" dynamikę obiektu, wyznaczając wartości stanów
-        w kolejnych chwilach czasu, a następnie pakuje wyniki w strukturę SystemData.
+        Metoda rozwiązuje problem początkowy (Initial Value Problem), wyznaczając
+        ewolucję stanów obiektu. Wynik jest synchronizowany z wymuszeniem u i pakowany
+        w ustandaryzowany kontener SystemData.
 
         Returns:
-            SystemData: Obiekt zawierający kompletny zbiór danych:
-                - y: Macierz stanów wyjściowych (np. h1, h2) [N x wymiar_stanu]
-                - u: Wektor/macierz zastosowanych sterowań [N x wymiar_u]
-                - t: Wektor czasu symulacji [N]
+            SystemData: Obiekt zawierający zsynchronizowane trajektorie:
+                - y (np.ndarray): Macierz stanów wyjściowych (np. h1, h2) [N x dim_y].
+                - u (np.ndarray): Macierz zastosowanych sterowań [N x dim_u].
+                - t (np.ndarray): Wektor czasu symulacji [N].
         """
 
         def wrapped_f(t, x):
@@ -56,19 +57,21 @@ class DataGenerator:
             u = self.u_func(t)
             return self.obj.f(t, x, u)
 
-        # Wywołanie profesjonalnego solvera o zmiennym kroku czasowym
+        # Wywołanie solvera z adaptacyjnym krokiem czasowym (RK45)
         sol = solve_ivp(
             wrapped_f,
             self.obj.t_span,
             self.obj.x0,
             t_eval=self.t_eval,
-            method='RK45'  # Metoda Rungego-Kutty 4. i 5. rzędu
+            method='RK45',  # Adaptacyjna metoda Rungego-Kutty 4/5 rzędu
+            rtol=1e-6,  # Tolerancja względna (wysoka precyzja)
+            atol=1e-9  # Tolerancja bezwzględna
         )
 
-        # Wyznaczenie wartości sterowania u dla każdej chwili czasu t z rozwiązania
-        # Jest to niezbędne, aby zestawić u(k) z y(k) w zbiorze treningowym
+        # Synchronizacja: wyznaczenie wartości sterowania dokładnie dla tych chwil,
+        # które zwrócił solver. To kluczowe dla poprawnego treningu sieci MLP.
         u_values = np.array([self.u_func(ti) for ti in sol.t])
 
-        # Pakowanie danych do ustandaryzowanego kontenera
-        # sol.y.T transponuje macierz wyników do formatu [próbki x stany]
+        # Pakowanie wyników do kontenera SystemData.
+        # sol.y jest transponowane z [dim_y x N] na [N x dim_y].
         return SystemData(sol.y.T, u_values, sol.t)

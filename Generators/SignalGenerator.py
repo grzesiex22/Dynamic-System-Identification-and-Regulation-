@@ -3,7 +3,19 @@ from matplotlib import pyplot as plt
 
 
 class BaseSignal:
+    """
+    Klasa bazowa dla generatorów sygnałów pobudzających.
+    Definiuje podstawowe parametry czasowe i zakresy amplitud.
+    """
     def __init__(self, t_end, dt, amp_range=(2, 8)):
+        """
+        Inicjalizacja parametrów sygnału.
+
+        Args:
+            t_end (float): Czas końcowy sygnału [s].
+            dt (float): Krok próbkowania [s].
+            amp_range (tuple): Zakres dopuszczalnych napięć (min, max) [V].
+        """
         self.t_end = t_end
         self.dt = dt
         self.amin, self.amax = amp_range
@@ -11,14 +23,26 @@ class BaseSignal:
 
 
 class APRBSSignal(BaseSignal):
+    """
+    Sygnał APRBS (Amplitude Pseudo-Random Binary Sequence).
+    Charakteryzuje się skokowymi zmianami amplitudy utrzymywanymi przez losowy czas.
+    Idealny do uczenia sieci stanów ustalonych oraz odpowiedzi skokowej.
+    """
+
     def __init__(self, t_end, dt, amp_range=(2, 8), hold_range=(50, 200)):
+        """
+        Args:
+            hold_range (tuple): Zakres (min, max) czasu utrzymania jednej wartości (w krokach dt).
+        """
+
         super().__init__(t_end, dt, amp_range)
         self.hold_range = hold_range
         # Generujemy tablicę wartości raz w konstruktorze
         self.u_values = self._create_aprbs_array()
 
     def _create_aprbs_array(self):
-        """Logika generowania, którą podałeś - tworzy wektor bazowy."""
+        """Generuje tablicę sygnału metodą Zero-Order Hold."""
+
         u = np.zeros_like(self.t)
         i = 0
         while i < len(self.t):
@@ -51,17 +75,30 @@ class APRBSSignal(BaseSignal):
 
 
 class MultisineSignal(BaseSignal):
-    def __init__(self, t_end, dt, amp_range=(2, 8), n_freqs=10, f_max=0.02):
-        super().__init__(t_end, dt, amp_range)
+    """
+    Sygnał wieloczęstotliwościowy (Multisine).
+    Suma wielu sinusojid o losowych częstotliwościach i fazach.
+    Uczy sieć dynamiki w dziedzinie częstotliwości (np. jak szybko system reaguje).
+    """
 
+    def __init__(self, t_end, dt, amp_range=(2, 8), n_freqs=10, f_max=0.02):
+        """
+        Args:
+            n_freqs (int): Liczba sumowanych składowych harmonicznych.
+            f_max (float): Maksymalna częstotliwość składowej [Hz].
+        """
+
+        super().__init__(t_end, dt, amp_range)
         self.freqs = np.random.uniform(0.00001, f_max, n_freqs)
         self.phases = np.random.uniform(0, 2 * np.pi, n_freqs)
 
     def generate(self):
-        # Generujemy wywołując naszą dokładną funkcję dla wektora t
+        """Generuje pełną trajektorię sygnału dla wektora czasu self.t."""
         return np.array([self(ti) for ti in self.t])
 
     def __call__(self, t):
+        """Wyznacza sumę sinusów znormalizowaną do zakresu amp_range."""
+
         # 1. Liczymy sumę sinusów dla konkretnego punktu czasu 't'
         u_raw = 0.0
         for f, p in zip(self.freqs, self.phases):
@@ -72,19 +109,31 @@ class MultisineSignal(BaseSignal):
         n = len(self.freqs)
         u_norm = (u_raw + n) / (2 * n)  # Przesunięcie do zakresu [0, 1]
 
-        # 3. Skalowanie do Twojego amp_range
+        # 3. Skalowanie do amp_range
         return u_norm * (self.amax - self.amin) + self.amin
 
 
 class FilteredNoiseSignal(BaseSignal):
+    """
+    Przefiltrowany Szum Biały (Low-pass Filtered Noise).
+    Sygnał chaotyczny o ograniczonym paśmie. Pomaga sieci uzyskać odporność
+    na szumy procesowe i modelować nieprzewidywalne zmiany sterowania.
+    """
+
     def __init__(self, t_end, dt, amp_range=(2, 8), cutoff=0.001):
+        """
+        Args:
+            cutoff (float): Częstotliwość odcięcia filtru dolnoprzepustowego (współczynnik bezwładności).
+        """
+
         super().__init__(t_end, dt, amp_range)
         self.cutoff = cutoff
         # Generujemy bazowy, przefiltrowany wektor szumu
         self.u_values = self._create_filtered_noise()
 
     def _create_filtered_noise(self):
-        """Logika filtra EMA z wbudowaną normalizacją do zakresu [amin, amax]."""
+        """Implementuje filtr dolnoprzepustowy EMA (Exponential Moving Average)."""
+
         noise = np.random.randn(len(self.t))
         u = np.zeros_like(noise)
 
@@ -110,16 +159,11 @@ class FilteredNoiseSignal(BaseSignal):
         return u_norm * (self.amax - self.amin) + self.amin
 
     def generate(self):
-        """Zwraca tablicę do debugowania."""
+        """Zwraca wygenerowaną tablicę przefiltrowanego szumu."""
         return self.u_values
 
     def __call__(self, t):
-        """
-        Metoda dla solvera.
-        Używa szybkiej interpolacji liniowej, aby sygnał był gładki
-        pomiędzy punktami z self.t.
-        """
-        # np.interp(punkt_szukany, oś_x, wartości_y)
+        """Zwraca interpolowaną wartość sygnału dla gładkiego przejścia między krokami."""
         return np.interp(t, self.t, self.u_values)
 
 
