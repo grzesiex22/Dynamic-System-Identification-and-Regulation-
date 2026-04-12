@@ -1,50 +1,62 @@
 import numpy as np
 import copy
 
-
-
 class OwnSystemMLP:
-    def __init__(self, input_dim=3, hidden_layers=None, output_dim=2, seed=42):
-        if hidden_layers is None:
-            hidden_layers = [64, 64]
+    """
+    Model sieci neuronowej MLP do identyfikacji dynamiki systemów nieliniowych.
+    Model przewiduje pochodne stanów:
+        dy/dt = f(u(k), y(k-1), dy/dt(k-1))
+    """
 
-        self.input_dim = input_dim
-        self.hidden_layers = list(hidden_layers)
-        self.output_dim = output_dim
-        self.seed = seed
+   def __init__(self, input_dim=5, hidden_dim=128, output_dim=2, seed=42):
+    """
+    Inicjalizacja architektury sieci.
 
-        np.random.seed(seed)
+    Args:
+        input_dim (int): Liczba cech wejściowych.
+        hidden_dim (int): Liczba neuronów w warstwach ukrytych.
+        output_dim (int): Liczba wyjść.
+        seed (int): Ziarno losowości.
+    """
+    rng = np.random.default_rng(seed)
 
-        layer_dims = [input_dim] + self.hidden_layers + [output_dim]
+    self.W1 = rng.normal(0.0, 1.0, size=(input_dim, hidden_dim))
+    self.b1 = np.zeros((1, hidden_dim))
 
-        self.weights = []
-        self.biases = []
+    self.W2 = rng.normal(0.0, 1.0, size=(hidden_dim, hidden_dim))
+    self.b2 = np.zeros((1, hidden_dim))
 
-        for i in range(len(layer_dims) - 1):
-            in_dim = layer_dims[i]
-            out_dim = layer_dims[i + 1]
+    self.W3 = rng.normal(0.0, 1.0, size=(hidden_dim, output_dim))
+    self.b3 = np.zeros((1, output_dim))
 
-            limit = np.sqrt(6.0 / (in_dim + out_dim))
-            W = np.random.uniform(-limit, limit, size=(in_dim, out_dim))
-            b = np.zeros((1, out_dim))
+    self.output_dim = output_dim
+    self.best_model_state = None
+    self.best_epoch_nr = 0
 
-            self.weights.append(W)
-            self.biases.append(b)
+    # Stany optimizera Adam
+    self.m = {}
+    self.v = {}
+    for name, param in self.get_parameters().items():
+        self.m[name] = np.zeros_like(param)
+        self.v[name] = np.zeros_like(param)
 
-        self.best_weights = copy.deepcopy(self.weights)
-        self.best_biases = copy.deepcopy(self.biases)
-        self.best_val_loss = float("inf")
+    def get_parameters(self):
+        return {
+            "W1": self.W1.copy(),
+            "b1": self.b1.copy(),
+            "W2": self.W2.copy(),
+            "b2": self.b2.copy(),
+            "W3": self.W3.copy(),
+            "b3": self.b3.copy(),
+        }
 
-        self.train_loss_history = []
-        self.val_loss_history = []
-
-    def summary(self):
-        print("=== SystemMLP (NumPy) ===")
-        print(f"Wejścia       : {self.input_dim}")
-        print(f"Warstwy ukryte: {self.hidden_layers}")
-        print(f"Wyjścia       : {self.output_dim}")
-        dims = [self.input_dim] + self.hidden_layers + [self.output_dim]
-        print("Architektura  :", " -> ".join(map(str, dims)))
+    def set_parameters(self, params):
+        self.W1 = params["W1"].copy()
+        self.b1 = params["b1"].copy()
+        self.W2 = params["W2"].copy()
+        self.b2 = params["b2"].copy()
+        self.W3 = params["W3"].copy()
+        self.b3 = params["b3"].copy()
 
     @staticmethod
     def _tanh(x):
@@ -52,260 +64,242 @@ class OwnSystemMLP:
 
     @staticmethod
     def _tanh_derivative(a):
+        # a = tanh(z)
         return 1.0 - a ** 2
 
+    def forward(self, X):
+        """
+        Forward pass.
+
+        Args:
+            X (np.ndarray): [N x input_dim]
+
+        Returns:
+            tuple: (y_pred, cache)
+        """
+        z1 = X @ self.W1 + self.b1
+        a1 = self._tanh(z1)
+
+        z2 = a1 @ self.W2 + self.b2
+        a2 = self._tanh(z2)
+
+        z3 = a2 @ self.W3 + self.b3
+        y_pred = z3
+
+        cache = {
+            "X": X,
+            "a1": a1,
+            "a2": a2,
+            "y_pred": y_pred
+        }
+        return y_pred, cache
+
     @staticmethod
-    def _train_val_split(X, y, val_ratio=0.2, shuffle=True, seed=42):
-        n = len(X)
-        indices = np.arange(n)
+    def mse_loss(y_pred, y_true):
+        return np.mean((y_pred - y_true) ** 2)
 
-        if shuffle:
-            rng = np.random.default_rng(seed)
-            rng.shuffle(indices)
+    def backward(self, y_true, cache):
+        """
+        Backpropagation dla MSE.
 
-        split = int(n * (1.0 - val_ratio))
-        train_idx = indices[:split]
-        val_idx = indices[split:]
+        Args:
+            y_true (np.ndarray): [N x output_dim]
+            cache (dict): dane z forward
 
-        return X[train_idx], y[train_idx], X[val_idx], y[val_idx]
+        Returns:
+            dict: gradienty wag i biasów
+        """
+        X = cache["X"]
+        a1 = cache["a1"]
+        a2 = cache["a2"]
+        y_pred = cache["y_pred"]
 
-    def _forward(self, X):
-        activations = [X]
-        A = X
+        N = X.shape[0]
 
-        for i in range(len(self.weights) - 1):
-            Z = A @ self.weights[i] + self.biases[i]
-            A = self._tanh(Z)
-            activations.append(A)
+        # dL/dy_pred
+        dy = (2.0 / N) * (y_pred - y_true)
 
-        Z_out = A @ self.weights[-1] + self.biases[-1]
-        y_pred = Z_out
-        activations.append(y_pred)
+        # Warstwa 3
+        dW3 = a2.T @ dy
+        db3 = np.sum(dy, axis=0, keepdims=True)
 
-        return activations, y_pred
+        da2 = dy @ self.W3.T
+        dz2 = da2 * self._tanh_derivative(a2)
 
-    def _backward(self, activations, y_true, y_pred):
-        n = y_true.shape[0]
+        # Warstwa 2
+        dW2 = a1.T @ dz2
+        db2 = np.sum(dz2, axis=0, keepdims=True)
 
-        grad_weights = [None] * len(self.weights)
-        grad_biases = [None] * len(self.biases)
+        da1 = dz2 @ self.W2.T
+        dz1 = da1 * self._tanh_derivative(a1)
 
-        dA = (2.0 / n) * (y_pred - y_true)
+        # Warstwa 1
+        dW1 = X.T @ dz1
+        db1 = np.sum(dz1, axis=0, keepdims=True)
 
-        A_prev = activations[-2]
-        grad_weights[-1] = A_prev.T @ dA
-        grad_biases[-1] = np.sum(dA, axis=0, keepdims=True)
+        grads = {
+            "W1": dW1, "b1": db1,
+            "W2": dW2, "b2": db2,
+            "W3": dW3, "b3": db3
+        }
+        return grads
 
-        dA_prev = dA @ self.weights[-1].T
+    def adam_step(self, grads, lr, step_idx, beta1=0.9, beta2=0.999, eps=1e-8):
+        """
+        Jedna aktualizacja wag algorytmem Adam.
+        """
+        params = {
+            "W1": self.W1,
+            "b1": self.b1,
+            "W2": self.W2,
+            "b2": self.b2,
+            "W3": self.W3,
+            "b3": self.b3
+        }
 
-        for layer in range(len(self.weights) - 2, -1, -1):
-            A_curr = activations[layer + 1]
-            A_prev = activations[layer]
+        for name in params:
+            self.m[name] = beta1 * self.m[name] + (1.0 - beta1) * grads[name]
+            self.v[name] = beta2 * self.v[name] + (1.0 - beta2) * (grads[name] ** 2)
 
-            dZ = dA_prev * self._tanh_derivative(A_curr)
+            m_hat = self.m[name] / (1.0 - beta1 ** step_idx)
+            v_hat = self.v[name] / (1.0 - beta2 ** step_idx)
 
-            grad_weights[layer] = A_prev.T @ dZ
-            grad_biases[layer] = np.sum(dZ, axis=0, keepdims=True)
+            params[name] -= lr * m_hat / (np.sqrt(v_hat) + eps)
 
-            if layer > 0:
-                dA_prev = dZ @ self.weights[layer].T
-
-        return grad_weights, grad_biases
-
-    def train(
-        self,
-        X,
-        y,
-        epochs=1000,
-        lr=0.001,
-        val_ratio=0.2,
-        shuffle=True,
-        print_every=100
-    ):
-        X = np.asarray(X, dtype=np.float64)
-        y = np.asarray(y, dtype=np.float64)
-
-        if X.ndim != 2:
-            raise ValueError("X musi mieć wymiar [n_samples, n_features].")
-
-        if y.ndim != 2:
-            raise ValueError("y musi mieć wymiar [n_samples, n_outputs].")
-
-        if X.shape[1] != self.input_dim:
-            raise ValueError(
-                f"X ma {X.shape[1]} cech, a model oczekuje {self.input_dim}."
-            )
-
-        if y.shape[1] != self.output_dim:
-            raise ValueError(
-                f"y ma {y.shape[1]} wyjść, a model oczekuje {self.output_dim}."
-            )
-
-        X_train, y_train, X_val, y_val = self._train_val_split(
-            X, y, val_ratio=val_ratio, shuffle=shuffle, seed=self.seed
-        )
-
-        self.train_loss_history = []
-        self.val_loss_history = []
-        self.best_val_loss = float("inf")
-        self.best_weights = copy.deepcopy(self.weights)
-        self.best_biases = copy.deepcopy(self.biases)
-
-        print(f"Start treningu: {epochs} epok")
-
-        for epoch in range(epochs):
-            activations, y_pred_train = self._forward(X_train)
-            train_loss = Metrics.mse(y_train, y_pred_train)
-
-            grad_weights, grad_biases = self._backward(activations, y_train, y_pred_train)
-
-            # Inicjalizacja zmiennych dla pędu (Momentum)
-            v_weights = [np.zeros_like(w) for w in self.weights]
-            v_biases = [np.zeros_like(b) for b in self.biases]
-            gamma = 0.9  # współczynnik pędu
-
-            for i in range(len(self.weights)):
-                # Obliczamy prędkość (pęd)
-                v_weights[i] = gamma * v_weights[i] + lr * grad_weights[i]
-                v_biases[i] = gamma * v_biases[i] + lr * grad_biases[i]
-
-                # Aktualizujemy wagi
-                self.weights[i] -= v_weights[i]
-                self.biases[i] -= v_biases[i]
-
-            _, y_pred_val = self._forward(X_val)
-            val_loss = Metrics.mse(y_val, y_pred_val)
-
-            self.train_loss_history.append(train_loss)
-            self.val_loss_history.append(val_loss)
-
-            if val_loss < self.best_val_loss:
-                self.best_val_loss = val_loss
-                self.best_weights = copy.deepcopy(self.weights)
-                self.best_biases = copy.deepcopy(self.biases)
-
-            if epoch % print_every == 0 or epoch == epochs - 1:
-                print(
-                    f"Epoka {epoch:5d} | "
-                    f"train MSE: {train_loss:.8f} | "
-                    f"val MSE: {val_loss:.8f}"
-                )
-
-        self.weights = copy.deepcopy(self.best_weights)
-        self.biases = copy.deepcopy(self.best_biases)
-
-        print(f"Trening zakończony. Najlepsze val MSE: {self.best_val_loss:.8f}")
+        self.W1 = params["W1"]
+        self.b1 = params["b1"]
+        self.W2 = params["W2"]
+        self.b2 = params["b2"]
+        self.W3 = params["W3"]
+        self.b3 = params["b3"]
 
     def predict(self, X):
-        X = np.asarray(X, dtype=np.float64)
-
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
-
-        if X.shape[1] != self.input_dim:
-            raise ValueError(
-                f"Niepoprawny wymiar wejścia. Oczekiwano {self.input_dim}, otrzymano {X.shape[1]}."
-            )
-
-        _, y_pred = self._forward(X)
+        y_pred, _ = self.forward(X)
         return y_pred
 
-    def predict_on_system_data(self, data):
-        X, y_true = data.get_training_data()
-        y_pred = self.predict(X)
-        return y_true, y_pred
+    def train(self, X_train, y_train, X_val, y_val, lr=0.001, epochs=100, patience=10):
+        """
+        Przeprowadza proces uczenia z walidacją, Early Stopping i zapisem najlepszego modelu.
 
-    def simulate(self, u_new, y0, dt):
-        u_new = np.asarray(u_new, dtype=np.float64)
-        dy_dt_pred = []
+        Args:
+            X_train (np.ndarray): Dane treningowe [Trajektorie x Punkty x Cechy].
+            y_train (np.ndarray): Cele treningowe [Trajektorie x Punkty x Wyjścia].
+            X_val (np.ndarray): Dane walidacyjne.
+            y_val (np.ndarray): Cele walidacyjne.
+            lr (float): Learning rate.
+            epochs (int): Maksymalna liczba epok.
+            patience (int): Early stopping.
+        """
+        print(f"\nStart treningu: {epochs} epok.")
+
+        # Walidację spłaszczamy do 2D, bo sieć dostaje [N x cechy]
+        if X_val.ndim == 3:
+            X_val_eval = X_val.reshape(-1, X_val.shape[-1])
+            y_val_eval = y_val.reshape(-1, y_val.shape[-1])
+        else:
+            X_val_eval = X_val
+            y_val_eval = y_val
+
+        best_val_loss = float("inf")
+        epochs_no_improve = 0
+        step_idx = 0
+
+        for epoch in range(epochs):
+            train_losses = []
+
+            # trening po trajektoriach, tak jak w wersji torch
+            for i in range(X_train.shape[0]):
+                x_traj = X_train[i]
+                y_traj = y_train[i]
+
+                y_pred, cache = self.forward(x_traj)
+                loss = self.mse_loss(y_pred, y_traj)
+                grads = self.backward(y_traj, cache)
+
+                step_idx += 1
+                self.adam_step(grads, lr=lr, step_idx=step_idx)
+
+                train_losses.append(loss)
+
+            avg_train_loss = float(np.mean(train_losses))
+
+            # Walidacja
+            v_pred = self.predict(X_val_eval)
+            v_loss = float(self.mse_loss(v_pred, y_val_eval))
+
+            # Early stopping + checkpoint
+            if v_loss < best_val_loss:
+                best_val_loss = v_loss
+                epochs_no_improve = 0
+                self.best_model_state = copy.deepcopy(self.get_parameters())
+                self.best_epoch_nr = epoch
+            else:
+                epochs_no_improve += 1
+
+            print(
+                f"Epoka {epoch + 1:4d}/{epochs} | "
+                f"T_Loss: {avg_train_loss:.8f} | "
+                f"V_Loss: {v_loss:.8f} | "
+                f"Patience: {epochs_no_improve}/{patience}"
+            )
+
+            if epochs_no_improve >= patience:
+                print(f"\nEarly Stopping! Brak poprawy przez {patience} epok. Aktualna epoka: {epoch}")
+                break
+
+        # Przywrócenie najlepszego modelu
+        if self.best_model_state is not None:
+            self.set_parameters(self.best_model_state)
+            print(f"Przywrócono najlepszy model (Val MSE: {best_val_loss:.8f}) z epoki {self.best_epoch_nr}")
+
+    def simulate(self, t, u_new, h0, dh_dt0=None):
+        """
+        Symulacja rekurencyjna (Open-Loop) systemu przy użyciu nauczonego modelu.
+
+        Args:
+            t (np.ndarray): Wektor czasu [N].
+            u_new (np.ndarray): Sygnał sterujący [N x dim_u] lub [N].
+            h0 (np.ndarray): Warunek początkowy stanów [dim_y].
+            dh_dt0 (np.ndarray, optional): Początkowa pochodna.
+
+        Returns:
+            SystemData: Obiekt z wynikami symulacji.
+        """
+        n_points = len(t)
+        dt = t[1] - t[0]
+
+        h_sim = np.zeros((n_points, self.output_dim))
+        dh_dt_sim = np.zeros((n_points, self.output_dim))
+
+        h_sim[0] = h0
+
+        if dh_dt0 is None:
+            dh_dt_prev = np.zeros(self.output_dim)
+        else:
+            dh_dt_prev = np.array(dh_dt0, dtype=float)
+
+        dh_dt_sim[0] = dh_dt_prev
 
         if u_new.ndim == 1:
             u_new = u_new.reshape(-1, 1)
 
-        y0 = np.asarray(y0, dtype=np.float64).flatten()
-
-        if len(y0) != self.output_dim:
-            raise ValueError(
-                f"Stan początkowy y0 ma długość {len(y0)}, a output_dim={self.output_dim}."
-            )
-
-        n_points = len(u_new)
-        y_sim = np.zeros((n_points, self.output_dim), dtype=np.float64)
-        y_sim[0] = y0
-
         for i in range(1, n_points):
-            u_curr = u_new[i - 1]
-            y_prev = y_sim[i - 1]
+            x_input = np.concatenate([
+                u_new[i],        # u(k)
+                h_sim[i - 1],    # y(k-1)
+                dh_dt_prev       # dy/dt(k-1)
+            ]).astype(float).reshape(1, -1)
 
-            x_input = np.concatenate([y_prev, u_curr]).reshape(1, -1)
+            dh_dt_curr = self.predict(x_input).flatten()
+            dh_dt_sim[i] = dh_dt_curr
 
-            if x_input.shape[1] != self.input_dim:
-                raise ValueError(
-                    f"Podczas symulacji wejście ma wymiar {x_input.shape[1]}, "
-                    f"a model oczekuje {self.input_dim}."
-                )
-            # dy_dt_pred.append(self.predict(x_input).flatten())
-            dy_dt_pred = self.predict(x_input).flatten()
-            y_sim[i] = y_prev + dy_dt_pred * dt
-            y_sim[i] = np.maximum(y_sim[i], 0.0)
+            # Euler
+            h_sim[i] = h_sim[i - 1] + dh_dt_curr * dt
 
-        # return y_sim, dy_dt_pred
-        return y_sim
+            # Ograniczenie fizyczne
+            h_sim[i] = np.maximum(h_sim[i], 0.0)
 
-    def evaluate_derivatives(self, data):
-        y_true, y_pred = self.predict_on_system_data(data)
-        return Metrics.evaluate(y_true, y_pred)
+            dh_dt_prev = dh_dt_curr
 
-    def evaluate_simulation(self, y_true, y_sim):
-        return Metrics.evaluate(y_true, y_sim)
-
-    def save_best_model(self, filepath):
-        data = {}
-
-        for i, W in enumerate(self.best_weights):
-            data[f"W{i}"] = W
-
-        for i, b in enumerate(self.best_biases):
-            data[f"b{i}"] = b
-
-        data["input_dim"] = np.array([self.input_dim])
-        data["output_dim"] = np.array([self.output_dim])
-        data["hidden_layers"] = np.array(self.hidden_layers)
-        data["best_val_loss"] = np.array([self.best_val_loss])
-
-        np.savez(filepath, **data)
-
-    def load_model(self, filepath):
-        data = np.load(filepath, allow_pickle=True)
-
-        loaded_input_dim = int(data["input_dim"][0])
-        loaded_output_dim = int(data["output_dim"][0])
-        loaded_hidden_layers = list(data["hidden_layers"])
-
-        if loaded_input_dim != self.input_dim:
-            raise ValueError(
-                f"input_dim z pliku = {loaded_input_dim}, a bieżący model ma {self.input_dim}"
-            )
-
-        if loaded_output_dim != self.output_dim:
-            raise ValueError(
-                f"output_dim z pliku = {loaded_output_dim}, a bieżący model ma {self.output_dim}"
-            )
-
-        if loaded_hidden_layers != self.hidden_layers:
-            raise ValueError(
-                f"hidden_layers z pliku = {loaded_hidden_layers}, a bieżący model ma {self.hidden_layers}"
-            )
-
-        self.weights = []
-        self.biases = []
-
-        n_layers = len([key for key in data.keys() if key.startswith("W")])
-
-        for i in range(n_layers):
-            self.weights.append(data[f"W{i}"])
-            self.biases.append(data[f"b{i}"])
-
-        self.best_weights = copy.deepcopy(self.weights)
-        self.best_biases = copy.deepcopy(self.biases)
-        self.best_val_loss = float(data["best_val_loss"][0])
+        from Generators.SystemData import SystemData
+        return SystemData(y=h_sim, u=u_new, t=t, dydt=dh_dt_sim)

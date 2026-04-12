@@ -8,6 +8,7 @@ from Dataset.DatasetReader import DatasetReader
 from ML.SystemMLP import SystemMLP
 from Objects.CoupledTanks import CoupledTanks1
 from Utills.Metrics import Metrics
+from ML.ImplementationOfMLP import OwnSystemMLP
 
 
 # -----------------------------
@@ -103,17 +104,32 @@ t = train_objects[0].t
 # -----------------------------
 print("\n"), print("-" * 100)
 
-# Inicjalizacja modelu
-mlp = SystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
+# # Inicjalizacja modelu
+# mlp = SystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
 
-# Przekazujemy surowe macierze 3D (SET x N-2 x 5)
+# # Przekazujemy surowe macierze 3D (SET x N-2 x 5)
+# mlp.train(
+#     X_train,
+#     Y_train,
+#     X_val,
+#     Y_val,
+#     epochs=50,
+#     lr=0.0005  # Przy uczeniu trajektoria po trajektorii mniejszy LR jest bezpieczniejszy
+# )
+
+
+#-----------
+# 4.2 Nasze MLP 
+
+mlp = OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
+
 mlp.train(
     X_train,
     Y_train,
     X_val,
     Y_val,
     epochs=50,
-    lr=0.0005  # Przy uczeniu trajektoria po trajektorii mniejszy LR jest bezpieczniejszy
+    lr=0.0005
 )
 
 # -----------------------------
