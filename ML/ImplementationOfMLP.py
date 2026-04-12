@@ -8,37 +8,43 @@ class OwnSystemMLP:
         dy/dt = f(u(k), y(k-1), dy/dt(k-1))
     """
 
-   def __init__(self, input_dim=5, hidden_dim=128, output_dim=2, seed=42):
-    """
-    Inicjalizacja architektury sieci.
+    def __init__(self, input_dim=5, hidden_dim=128, output_dim=2, seed=42):
+        """
+        Inicjalizacja architektury sieci.
 
-    Args:
-        input_dim (int): Liczba cech wejściowych.
-        hidden_dim (int): Liczba neuronów w warstwach ukrytych.
-        output_dim (int): Liczba wyjść.
-        seed (int): Ziarno losowości.
-    """
-    rng = np.random.default_rng(seed)
+        Args:
+            input_dim (int): Liczba cech wejściowych.
+            hidden_dim (int): Liczba neuronów w warstwach ukrytych.
+            output_dim (int): Liczba wyjść.
+            seed (int): Ziarno losowości.
+        """
+        rng = np.random.default_rng(seed)
 
-    self.W1 = rng.normal(0.0, 1.0, size=(input_dim, hidden_dim))
-    self.b1 = np.zeros((1, hidden_dim))
+        def xavier_init(fan_in, fan_out):
+            limit = np.sqrt(6.0 / (fan_in + fan_out))
+            return rng.uniform(-limit, limit, size=(fan_in, fan_out))
 
-    self.W2 = rng.normal(0.0, 1.0, size=(hidden_dim, hidden_dim))
-    self.b2 = np.zeros((1, hidden_dim))
+        # Xavier
+        self.W1 = xavier_init(input_dim, hidden_dim)
+        self.b1 = np.zeros((1, hidden_dim))
 
-    self.W3 = rng.normal(0.0, 1.0, size=(hidden_dim, output_dim))
-    self.b3 = np.zeros((1, output_dim))
+        self.W2 = xavier_init(hidden_dim, hidden_dim)
+        self.b2 = np.zeros((1, hidden_dim))
 
-    self.output_dim = output_dim
-    self.best_model_state = None
-    self.best_epoch_nr = 0
+        self.W3 = xavier_init(hidden_dim, output_dim)
+        self.b3 = np.zeros((1, output_dim))
 
-    # Stany optimizera Adam
-    self.m = {}
-    self.v = {}
-    for name, param in self.get_parameters().items():
-        self.m[name] = np.zeros_like(param)
-        self.v[name] = np.zeros_like(param)
+        self.output_dim = output_dim
+        self.best_model_state = None
+        self.best_epoch_nr = 0
+
+        # Adam
+        self.m = {}
+        self.v = {}
+
+        for name, param in self.get_parameters().items():
+            self.m[name] = np.zeros_like(param)
+            self.v[name] = np.zeros_like(param)
 
     def get_parameters(self):
         return {
