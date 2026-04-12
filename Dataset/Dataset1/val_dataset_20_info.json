@@ -1,0 +1,147 @@
+{
+    "metadata": {
+        "date": "2026-04-08 14:00:18",
+        "filename": "val_dataset_20.npz",
+        "system_object": "CoupledTanks1",
+        "dt": 0.5,
+        "t_end": 1000
+    },
+    "dataset_structure": {
+        "total_trajectories": 20,
+        "points_per_trajectory": {
+            "raw_u_y": 2000,
+            "derivative_dydt": 1999
+        },
+        "dimensions": {
+            "u_control_dim": 1,
+            "y_state_dim": 2,
+            "dydt_dim": 2
+        }
+    },
+    "statistics": {
+        "aprbs": 5,
+        "multisine": 6,
+        "noise": 9
+    },
+    "signals_config": {
+        "aprbs": {
+            "h_min_range": [
+                50,
+                150
+            ],
+            "h_add_range": [
+                100,
+                300
+            ]
+        },
+        "multisine": {
+            "n_freqs_range": [
+                5,
+                15
+            ],
+            "f_max_range": [
+                0.005,
+                0.02
+            ]
+        },
+        "noise": {
+            "cutoff_range": [
+                0.001,
+                0.01
+            ]
+        }
+    },
+    "run_history": [
+        {
+            "type": "noise",
+            "cutoff": 0.008989494979035308
+        },
+        {
+            "type": "aprbs",
+            "h_min": 114,
+            "h_max": 334
+        },
+        {
+            "type": "aprbs",
+            "h_min": 73,
+            "h_max": 304
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 11,
+            "f_max": 0.012776659644962992
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.0010647193341536553
+        },
+        {
+            "type": "aprbs",
+            "h_min": 126,
+            "h_max": 266
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 12,
+            "f_max": 0.01610858289920394
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.004228044706606944
+        },
+        {
+            "type": "aprbs",
+            "h_min": 124,
+            "h_max": 398
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.006526125460238163
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.008122049969262902
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.0076383476659278235
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 12,
+            "f_max": 0.006337005271110378
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 7,
+            "f_max": 0.008369466228304685
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 10,
+            "f_max": 0.015868372216425352
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 10,
+            "f_max": 0.01808267268917824
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.004137766572122496
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.004880047724931912
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.00840268253545838
+        },
+        {
+            "type": "aprbs",
+            "h_min": 109,
+            "h_max": 323
+        }
+    ]
+}

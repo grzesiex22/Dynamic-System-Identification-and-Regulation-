@@ -7,7 +7,7 @@ from Dataset.DatasetReader import DatasetReader
 
 from ML.SystemMLP import SystemMLP
 from Objects.CoupledTanks import CoupledTanks1
-from Utills.Metrics import Metrics
+from Utills.Metrics import Metrics, MetricsSummarizer
 from ML.ImplementationOfMLP import OwnSystemMLP
 
 
@@ -19,11 +19,16 @@ dt = 0.5
 amp_range = [3, 15]
 
 # --- generator
-generate = True
-train_dataset_count = 100
-val_dataset_count = 20
-test_dataset_count = 20
-dataset_folder = "Dataset3"
+generate = False
+train_dataset_count = 1000
+val_dataset_count = 200
+test_dataset_count = 200
+dataset_name = "Dataset2"
+
+# --- model
+train_and_save = True
+load = False
+epochs = 100
 
 # -----------------------------
 # 1. Definicja obiektu dynamicznego
@@ -39,22 +44,22 @@ print("\n"), print("-" * 100)
 if generate:
     dataset_filename = f"train_dataset_{train_dataset_count}.npz"
     dataset_creator = DatasetCreator(tanks, t_end=t_end, dt=dt, amp_range=amp_range)
-    dataset_creator.create_dataset(n_trajectories=train_dataset_count, folder=dataset_folder, filename=dataset_filename)
+    dataset_creator.create_dataset(n_trajectories=train_dataset_count, folder=dataset_name, filename=dataset_filename)
 
     dataset_filename = f"val_dataset_{val_dataset_count}.npz"
     dataset_creator = DatasetCreator(tanks, t_end=t_end, dt=dt, amp_range=amp_range)
-    dataset_creator.create_dataset(n_trajectories=val_dataset_count, folder=dataset_folder, filename=dataset_filename)
+    dataset_creator.create_dataset(n_trajectories=val_dataset_count, folder=dataset_name, filename=dataset_filename)
 
     dataset_filename = f"test_dataset_{test_dataset_count}.npz"
     dataset_creator = DatasetCreator(tanks, t_end=t_end, dt=dt, amp_range=amp_range)
-    dataset_creator.create_dataset(n_trajectories=test_dataset_count, folder=dataset_folder, filename=dataset_filename)
+    dataset_creator.create_dataset(n_trajectories=test_dataset_count, folder=dataset_name, filename=dataset_filename)
     dataset_creator.show_random_signals(3)  # Podgląd
 
 # -----------------------------
 # 3. Odczyt danych (Unified Reader)
 # -----------------------------
 print("\n"), print("-" * 100)
-print(f"\n--- Ładowanie danych z folderu {dataset_folder} ---")
+print(f"\n--- Ładowanie danych z folderu {dataset_name} ---")
 
 reader = DatasetReader()
 
@@ -62,7 +67,7 @@ reader = DatasetReader()
 dataset_filename = f"train_dataset_{train_dataset_count}.npz"
 print(f"\nŁadowanie danych treningowych z: {dataset_filename}...")
 # Wczytujemy wielką macierz (wszystkie trajektorie połączone)
-train_objects = reader.read_all(folder=dataset_folder, filename=dataset_filename)
+train_objects = reader.read_all(folder=dataset_name, filename=dataset_filename)
 reader.show_random_signals()
 
 # Przygotowanie macierzy do uczenia (SET x N-2 x 5)
@@ -76,7 +81,7 @@ print(f"X_train shape: {X_train.shape}, y_train shape: {Y_train.shape}")
 dataset_filename = f"val_dataset_{val_dataset_count}.npz"
 print(f"\nŁadowanie danych walidacyjnych z: {dataset_filename}...")
 # Wczytujemy wielką macierz (wszystkie trajektorie połączone)
-val_objects = reader.read_all(folder=dataset_folder, filename=dataset_filename)
+val_objects = reader.read_all(folder=dataset_name, filename=dataset_filename)
 
 X_val = np.stack([obj.get_training_data()[0] for obj in val_objects])
 Y_val = np.stack([obj.get_training_data()[1] for obj in val_objects])
@@ -88,7 +93,7 @@ print(f"X_val shape: {X_val.shape}, y_val shape: {Y_val.shape}")
 dataset_filename = f"test_dataset_{test_dataset_count}.npz"
 print(f"\nŁadowanie danych testowych z: {dataset_filename}...")
 # Wczytujemy wielką macierz (wszystkie trajektorie połączone)
-test_objects = reader.read_all(folder=dataset_folder, filename=dataset_filename)
+test_objects = reader.read_all(folder=dataset_name, filename=dataset_filename)
 
 X_test = np.stack([obj.get_training_data()[0] for obj in test_objects])
 Y_test = np.stack([obj.get_training_data()[1] for obj in test_objects])
@@ -104,46 +109,51 @@ t = train_objects[0].t
 # -----------------------------
 print("\n"), print("-" * 100)
 
-# # Inicjalizacja modelu
-# mlp = SystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
+# Inicjalizacja modelu
+troch_mlp = SystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
 
-# # Przekazujemy surowe macierze 3D (SET x N-2 x 5)
-# mlp.train(
-#     X_train,
-#     Y_train,
-#     X_val,
-#     Y_val,
-#     epochs=50,
-#     lr=0.0005  # Przy uczeniu trajektoria po trajektorii mniejszy LR jest bezpieczniejszy
-# )
+if load:
+    troch_mlp.load_model(dataset=dataset_name)
 
-
-#-----------
-# 4.2 Nasze MLP 
-
-import os
-
-model_path = "saved_models/best_mlp.npz"
-
-mlp = OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
-
-if os.path.exists(model_path):
-    mlp.load_model(model_path)
-
-else:
-    mlp.train(
+if train_and_save:
+    troch_mlp.train(
         X_train,
         Y_train,
         X_val,
         Y_val,
-        epochs=50,
-        lr=0.0005,
-        save_best_path=model_path
+        epochs=epochs,
+        lr=0.0005  # Przy uczeniu trajektoria po trajektorii mniejszy LR jest bezpieczniejszy
     )
+    troch_mlp.save_model(dataset=dataset_name)
+
 # -----------------------------
-# 5. Symulacja testowa na trzech trajektoriach (MLP GOTOWE)
+# 5. Tworzymy i trenujemy MLP (własne)
 # -----------------------------
 print("\n"), print("-" * 100)
+
+own_mlp = OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
+
+if load:
+    own_mlp.load_model(dataset=dataset_name)
+
+if train_and_save:
+    own_mlp.train(
+        X_train,
+        Y_train,
+        X_val,
+        Y_val,
+        epochs=epochs,
+        lr=0.0005,
+    )
+    own_mlp.save_model(dataset=dataset_name)
+
+# -----------------------------
+# 6. Symulacja testowa na trzech trajektoriach (MLP GOTOWE - MLP WŁASNE)
+# -----------------------------
+print("\n"), print("-" * 100)
+
+# Inicjalizacja metryk
+summarizer = MetricsSummarizer()
 
 for i in [0, 1, 3]:
     idx = i  # idx to numer trajektorii
@@ -153,124 +163,43 @@ for i in [0, 1, 3]:
     t_plot, u_plot, h_true, dh_dt_true = test_obj.get_data_to_plot()
     t_to_sim, u_to_sim, h0_to_sim, dh_dt0_to_sim = test_obj.get_data_to_simulate()
 
-    # --- Symulacja modelu ---
-    print(f"\n🚀 Uruchamiam symulację dla trajektorii testowej nr {idx}...")
-    sim_obj = mlp.simulate(t=t_to_sim, u_new=u_to_sim, h0=h0_to_sim, dh_dt0=dh_dt0_to_sim)
-    t_sim, u_sim, h_sim, dh_dt_sim = sim_obj.get_data_to_plot()
+    # --- Symulacja modelu - TORCH MLP ---
+    print(f"\n🚀 Uruchamiam symulację WŁASNEGO MLP dla trajektorii testowej nr {idx}...")
+    sim_torch_mlp_obj = troch_mlp.simulate(t=t_to_sim, u_new=u_to_sim, h0=h0_to_sim, dh_dt0=dh_dt0_to_sim)
+    t_sim_torch_mlp, u_sim_torch_mlp, h_sim_torch_mlp, dh_dt_sim_torch_mlp = sim_torch_mlp_obj.get_data_to_plot()
 
-    # -----------------------------
-    # 5a. Metryki i Wykresy
-    # -----------------------------
-    # Porównujemy całą macierz [1998 x 2]
-    sim_metrics = Metrics.evaluate(dh_dt_true, dh_dt_sim)
+    # --- Symulacja modelu - OWN MLP ---
+    print(f"🚀 Uruchamiam symulację WŁASNEGO MLP dla trajektorii testowej nr {idx}...")
+    sim_own_mlp_obj = own_mlp.simulate(t=t_to_sim, u_new=u_to_sim, h0=h0_to_sim, dh_dt0=dh_dt0_to_sim)
+    t_sim_own_mlp, u_sim_own_mlp, h_sim_own_mlp, dh_dt_sim_own_mlp = sim_own_mlp_obj.get_data_to_plot()
 
-    print("\n=== METRYKI SYMULACJI (REKURENCYJNEJ) ===")
-    for key, value in sim_metrics.items():
-        print(f"{key}: {value:.6f}")
+    # --- Obliczanie metryk ---
+    torch_mlp_metrics = Metrics.evaluate(dh_dt_true, dh_dt_sim_torch_mlp)
+    own_mlp_metrics = Metrics.evaluate(dh_dt_true, dh_dt_sim_own_mlp)
 
-    # -----------------------------
-    # 5b. Wykres
-    # -----------------------------
+    # --- Dodawanie do podsumowania ---
+    summarizer.add_metrics(i, "Torch_MLP", torch_mlp_metrics)
+    summarizer.add_metrics(i, "Own_MLP", own_mlp_metrics)
+
+    # --- Wykres ---
     SystemPlotter.plot(
         t=t_plot,
         u=u_plot,
         y_true=h_true,
         dy_dt_true=dh_dt_true,
-        y_sim_list=[h_sim],
-        dy_dt_sim_list=[dh_dt_sim],
-        legend_sim=["Model MLP (5 wejść)"],
+        y_sim_list=[h_sim_own_mlp, h_sim_torch_mlp],
+        dy_dt_sim_list=[dh_dt_sim_own_mlp, dh_dt_sim_torch_mlp],
+        legend_sim=["OWN MLP", "TORCH MLP"],
         title=f"Weryfikacja modelu na danych testowych (trajektoria: {idx})"
     )
 
+#  Wyświetlenie tabeli metryk na koniec
+comparison_df = summarizer.summarize()
+
+# Opcjonalnie: Znajdź najlepszy model dla Trajektorii 0
+best_name, best_val = summarizer.get_best_model("MSE")
+print(f"🏆 Najlepszy wynik ogólny (MSE): {best_name} z wartością {best_val:.8f}")
+
+
 plt.show(block=True)
 
-# # -----------------------------
-# # 7. Symulacja testowa MLP (gotowe)
-# # -----------------------------
-# # Symulacja rekurencyjna MLP (Model używa własnych poprzednich wyjść)
-# y_sim_1 = mlp.simulate(u_new=u_test, y0=y0_test, dt=dt)
-#
-# # Obliczamy pochodne (opcjonalnie do wykresów)
-# dy_dt_sim_1 = np.gradient(y_sim_1, dt, axis=0)
-#
-# # -----------------------------
-# # 8. Tworzymy i trenujemy MLP (gotowe)
-# # -----------------------------
-# mlp2 = OwnSystemMLP(
-#     input_dim=3,
-#     hidden_layers=[64, 64],
-#     output_dim=2
-# )
-#
-# mlp2.summary()
-#
-# print("\nTraining own MLP...")
-# mlp2.train(
-#     X_train,
-#     y_target_train,
-#     epochs=2000,
-#     lr=0.01,
-#     val_ratio=0.2,
-#     shuffle=True,
-#     print_every=100
-# )
-#
-# # -----------------------------
-# # 9. Symulacja testowa MLP (własne)
-# # -----------------------------
-# dy_dt_sim_2 = mlp2.predict(X_train)
-# derivative_metrics = Metrics.evaluate(y_target_train, dy_dt_sim_2)
-# print_metrics("Metryki predykcji pochodnych dy/dt", derivative_metrics)
-#
-# # Symulacja rekurencyjna MLP
-# print("\nRunning recursive simulation...")
-# y_sim_2 = mlp2.simulate(u_new=u_test, y0=y0_test, dt=dt)
-# print(f"y_sim shape = {y_sim_2.shape}")
-#
-# # Metryki symulacji
-# simulation_metrics = Metrics.evaluate(y_true, y_sim_2)
-# print_metrics("Metryki symulacji wielokrokowej y(t)", simulation_metrics)
-#
-
-# # -----------------------------
-# # 10. Wykresy porównawcze
-# # -----------------------------
-# # Tworzymy wersje "skrócone" do wykresu pochodnych
-# t_der = t_test[:-1]           # skracamy czas o 1 punkt
-# y_true_der = y_true[:-1]      # skracamy stany o 1 punkt (żeby pasowały do t_der)
-# u_der = u_test[:-1]           # skracamy sterowanie
-#
-# SystemPlotter.plot(
-#     t=t_der,                  # Przekazujemy skrócony czas (999 pkt)
-#     u=u_der,                  # Skrócone u
-#     y_true=y_true_der,        # Skrócone y_true
-#     dy_dt_true=dy_dt_true,    # To ma już 999 pkt
-#     y_sim_list=[y_sim_1[:-1]],  # Skracamy symulacje
-#     dy_dt_sim_list=[dy_dt_sim_1[:-1]],  # dy_dt_sim_1 (z np.gradient) ma 1000, dy_dt_sim_2 ma 999
-#     legend_sim=["MLP PyTorch"],
-#     title="Porównanie trajektorii systemu (MLP PyTorch vs true)"
-# )
-#
-# SystemPlotter.plot(
-#     t=t_der,                  # Przekazujemy skrócony czas (999 pkt)
-#     u=u_der,                  # Skrócone u
-#     y_true=y_true_der,        # Skrócone y_true
-#     dy_dt_true=dy_dt_true,    # To ma już 999 pkt
-#     y_sim_list=[y_sim_2[:-1]],  # Skracamy symulacje
-#     dy_dt_sim_list=[dy_dt_sim_2],  # dy_dt_sim_1 (z np.gradient) ma 1000, dy_dt_sim_2 ma 999
-#     legend_sim=["MLP Własne"],
-#     title="Porównanie trajektorii systemu (MLP Własne vs true)"
-# )
-#
-# SystemPlotter.plot(
-#     t=t_der,                  # Przekazujemy skrócony czas (999 pkt)
-#     u=u_der,                  # Skrócone u
-#     y_true=y_true_der,        # Skrócone y_true
-#     dy_dt_true=dy_dt_true,    # To ma już 999 pkt
-#     y_sim_list=[y_sim_1[:-1], y_sim_2[:-1]], # Skracamy symulacje
-#     dy_dt_sim_list=[dy_dt_sim_1[:-1], dy_dt_sim_2], # dy_dt_sim_1 (z np.gradient) ma 1000, dy_dt_sim_2 ma 999
-#     legend_sim=["MLP PyTorch", "MLP Własne"],
-#     title="Porównanie trajektorii systemu (MLP PyTorch vs MLP własne vs true)"
-# )
-#
-# plt.show(block=True)

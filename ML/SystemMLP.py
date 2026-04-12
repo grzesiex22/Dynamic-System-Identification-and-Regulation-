@@ -1,3 +1,6 @@
+import json
+import os
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,6 +24,10 @@ class SystemMLP:
                 output_dim (int): Liczba wyjść (pochodne stanów dh1/dt, dh2/dt).
         """
         # Używamy Tanh dla gładkości, ale trzeba pamiętać o skalowaniu danych przy dużych amplitudach!
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+
         self.model = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.Tanh(),
@@ -28,9 +35,21 @@ class SystemMLP:
             nn.Tanh(),
             nn.Linear(hidden_dim, output_dim)
         )
-        self.output_dim = output_dim
+
+        # Pobranie ścieżki do folderu, w którym znajduje się ten skrypt (Dataset)
+        self.CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+        self.BASE_DIR = os.path.join(self.CURRENT_DIR)
+
+        # Metadane i historia
         self.best_model_state = None
-        self.best_epoch_nr = 0
+        self.training_config = {}
+        self.training_history = {
+            "train_loss": [],
+            "val_loss": [],
+            "lr": [],
+            "best_epoch": 0,
+            "total_epochs": 0
+        }
 
     def train(self, X_train, y_train, X_val, y_val, lr=0.001, epochs=100, patience=10):
         """
@@ -45,7 +64,19 @@ class SystemMLP:
             epochs (int): Maksymalna liczba epok.
             patience (int): Liczba epok bez poprawy przed zatrzymaniem (Early Stopping).
         """
-        print(f"\nStart treningu: {epochs} epok, 1000 trajektorii na epokę.")
+        print(f"\nTORCH MLP - Start treningu: {epochs} epok, {X_train.shape[0]} trajektorii na epokę.")
+        # Inicjalizacja konfiguracji
+        self.training_config = {
+            "lr": lr,
+            "max_epochs": epochs,
+            "patience": patience,
+            "hidden_dim": self.hidden_dim,
+            "input_dim": self.input_dim,
+            "optimizer": "Adam"
+        }
+        self.training_history["train_loss"] = []
+        self.training_history["val_loss"] = []
+        self.training_history["lr"] = []
 
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
         criterion = nn.MSELoss()
@@ -58,9 +89,9 @@ class SystemMLP:
         epochs_no_improve = 0
 
         # Inicjalizacja paska tqdm
-        pbar = tqdm(range(epochs), desc="Trening MLP")
+        epoch_bar = tqdm(range(epochs), desc="Trening MLP", unit="epoka")
 
-        for epoch in pbar:
+        for epoch in epoch_bar:
             self.model.train()
             train_losses = []
 
@@ -84,17 +115,23 @@ class SystemMLP:
                 v_pred = self.model(X_val_t)
                 v_loss = criterion(v_pred, y_val_t).item()
 
+            # Zapis do historii
+            self.training_history["train_loss"].append(float(avg_train_loss))
+            self.training_history["val_loss"].append(float(v_loss))
+            self.training_history["lr"].append(lr)
+            self.training_history["total_epochs"] = epoch + 1
+
             # --- Logika Early Stopping i Checkpointing ---
             if v_loss < best_val_loss:
                 best_val_loss = v_loss
                 epochs_no_improve = 0
                 # Zapisujemy kopię najlepszych wag
                 self.best_model_state = copy.deepcopy(self.model.state_dict())
-                self.best_epoch_nr = epoch
+                self.training_history["best_epoch"] = epoch + 1
             else:
                 epochs_no_improve += 1
 
-            pbar.set_postfix({
+            epoch_bar.set_postfix({
                 "T_Loss": f"{avg_train_loss:.8f}",
                 "V_Loss": f"{v_loss:.8f}",
                 "Patience": f"{epochs_no_improve}/{patience}"
@@ -107,7 +144,8 @@ class SystemMLP:
         # Przywracamy najlepsze wagi znalezione podczas całego procesu
         if self.best_model_state is not None:
             self.model.load_state_dict(self.best_model_state)
-            print(f"✅ Przywrócono najlepszy model (Val MSE: {best_val_loss:.8f}) z epoki {self.best_epoch_nr}")
+            best_epoch = self.training_history["best_epoch"]
+            print(f"✅ Przywrócono najlepszy model (Val MSE: {best_val_loss:.8f}) z epoki {best_epoch}")
 
     def simulate(self, t, u_new, h0, dh_dt0=None):
         """
@@ -166,3 +204,61 @@ class SystemMLP:
         # ZWRACAMY GOTOWY OBIEKT SYSTEM DATA
         from Generators.SystemData import SystemData
         return SystemData(y=h_sim, u=u_new, t=t, dydt=dh_dt_sim)
+
+    def save_model(self, folder="Saved_models", dataset="Dataset1"):
+        """
+        Zapisuje wagi (.pth) i pełną konfigurację z historią (.json).
+        """
+        full_dir = os.path.join(self.BASE_DIR, folder)
+        os.makedirs(full_dir, exist_ok=True)
+
+        base_path = os.path.join(full_dir, f"{dataset}_PyTorchMLP")
+
+        # 1. Zapis wag PyTorch
+        torch.save(self.model.state_dict(), f"{base_path}.pth")
+
+        # 2. Zapis metadanych do JSON
+        metadata = {
+            "model_arch": {
+                "input_dim": self.input_dim,
+                "hidden_dim": self.hidden_dim,
+                "output_dim": self.output_dim
+            },
+            "training_config": self.training_config,
+            "training_history": self.training_history
+        }
+
+        with open(f"{base_path}.json", "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=4, ensure_ascii=False)
+
+        print(f"✅ Model i JSON zapisane: {base_path}")
+
+    def load_model(self, folder="Saved_models", dataset="Dataset1"):
+        """
+        Wczytuje model i przywraca jego architekturę oraz historię.
+        """
+        base_path = os.path.join(self.BASE_DIR, folder, f"{dataset}_PyTorchMLP")
+
+        # 1. Wczytaj JSON, żeby wiedzieć jak zbudować sieć
+        with open(f"{base_path}.json", "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+
+        self.input_dim = metadata["model_arch"]["input_dim"]
+        self.hidden_dim = metadata["model_arch"]["hidden_dim"]
+        self.output_dim = metadata["model_arch"]["output_dim"]
+        self.training_config = metadata["training_config"]
+        self.training_history = metadata["training_history"]
+
+        # 2. Przebuduj model nn.Sequential (na wypadek gdyby parametry się zmieniły)
+        self.model = nn.Sequential(
+            nn.Linear(self.input_dim, self.hidden_dim),
+            nn.Tanh(),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.Tanh(),
+            nn.Linear(self.hidden_dim, self.output_dim)
+        )
+
+        # 3. Wczytaj wagi binarne
+        self.model.load_state_dict(torch.load(f"{base_path}.pth"))
+        self.model.eval()
+        print(f"📖 Model wczytany. Najlepsza epoka: {self.training_history['best_epoch']}")
