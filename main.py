@@ -121,17 +121,25 @@ print("\n"), print("-" * 100)
 #-----------
 # 4.2 Nasze MLP 
 
+import os
+
+model_path = "saved_models/best_mlp.npz"
+
 mlp = OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
 
-mlp.train(
-    X_train,
-    Y_train,
-    X_val,
-    Y_val,
-    epochs=50,
-    lr=0.0005
-)
+if os.path.exists(model_path):
+    mlp.load_model(model_path)
 
+else:
+    mlp.train(
+        X_train,
+        Y_train,
+        X_val,
+        Y_val,
+        epochs=50,
+        lr=0.0005,
+        save_best_path=model_path
+    )
 # -----------------------------
 # 5. Symulacja testowa na trzech trajektoriach (MLP GOTOWE)
 # -----------------------------
