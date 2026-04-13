@@ -1,13 +1,14 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
+from Test.Tester import Tester
 from Utills.SystemPlotter import SystemPlotter
 from Dataset.DatasetCreator import DatasetCreator
 from Dataset.DatasetReader import DatasetReader
 
 from ML.SystemMLP import SystemMLP
 from Objects.CoupledTanks import CoupledTanks1
-from Utills.Metrics import Metrics, MetricsSummarizer
+from Test.Metrics import Metrics, MetricsSummarizer
 from ML.ImplementationOfMLP import OwnSystemMLP
 
 
@@ -16,14 +17,14 @@ from ML.ImplementationOfMLP import OwnSystemMLP
 # -----------------------------
 t_end = 1000
 dt = 0.5
-amp_range = [3, 15]
+amp_range = [30, 150]
 
 # --- generator
 generate = False
-train_dataset_count = 1000
-val_dataset_count = 200
-test_dataset_count = 200
-dataset_name = "Dataset2"
+train_dataset_count = 100
+val_dataset_count = 20
+test_dataset_count = 20
+dataset_name = "Dataset3"
 
 # --- model
 train_and_save = False
@@ -110,13 +111,13 @@ t = train_objects[0].t
 print("\n"), print("-" * 100)
 
 # Inicjalizacja modelu
-troch_mlp = SystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
+torch_mlp = SystemMLP(input_dim=5, hidden_dim=128, output_dim=2)
 
 if load:
-    troch_mlp.load_model(dataset=dataset_name)
+    torch_mlp.load_model(dataset=dataset_name)
 
 if train_and_save:
-    troch_mlp.train(
+    torch_mlp.train(
         X_train,
         Y_train,
         X_val,
@@ -124,7 +125,7 @@ if train_and_save:
         epochs=epochs,
         lr=0.0005  # Przy uczeniu trajektoria po trajektorii mniejszy LR jest bezpieczniejszy
     )
-    troch_mlp.save_model(dataset=dataset_name)
+    torch_mlp.save_model(dataset=dataset_name)
 
 # -----------------------------
 # 5. Tworzymy i trenujemy MLP (własne)
@@ -148,6 +149,28 @@ if train_and_save:
     own_mlp.save_model(dataset=dataset_name)
 
 # -----------------------------
+# 6. Testy
+# -----------------------------
+print("\n"), print("-" * 100)
+models_to_test = [
+    {"obj": own_mlp,   "name": "Own_MLP"},
+    {"obj": torch_mlp, "name": "Torch_MLP"}
+]
+
+# --- 2. Inicjalizacja narzędzi ---
+summarizer = MetricsSummarizer()
+tester = Tester(test_objects) # Przekazujesz całą listę trajektorii testowych
+
+# --- 3. Uruchomienie testów ---
+tester.run(models_to_test, summarizer)
+
+# --- 4. Raportowanie ---
+summarizer.show_all()
+summarizer.show_averages()
+summarizer.save_all_to_file(dataset=dataset_name)  # Zapis do pliku
+summarizer.save_averages_to_file(dataset=dataset_name)
+
+# -----------------------------
 # 6. Symulacja testowa na trzech trajektoriach (MLP GOTOWE - MLP WŁASNE)
 # -----------------------------
 print("\n"), print("-" * 100)
@@ -165,7 +188,7 @@ for i in [0, 1, 3]:
 
     # --- Symulacja modelu - TORCH MLP ---
     print(f"\n🚀 Uruchamiam symulację WŁASNEGO MLP dla trajektorii testowej nr {idx}...")
-    sim_torch_mlp_obj = troch_mlp.simulate(t=t_to_sim, u_new=u_to_sim, h0=h0_to_sim, dh_dt0=dh_dt0_to_sim)
+    sim_torch_mlp_obj = torch_mlp.simulate(t=t_to_sim, u_new=u_to_sim, h0=h0_to_sim, dh_dt0=dh_dt0_to_sim)
     t_sim_torch_mlp, u_sim_torch_mlp, h_sim_torch_mlp, dh_dt_sim_torch_mlp = sim_torch_mlp_obj.get_data_to_plot()
 
     # --- Symulacja modelu - OWN MLP ---
@@ -181,20 +204,20 @@ for i in [0, 1, 3]:
     summarizer.add_metrics(i, "Torch_MLP", torch_mlp_metrics)
     summarizer.add_metrics(i, "Own_MLP", own_mlp_metrics)
 
-    # --- Wykres ---
-    SystemPlotter.plot(
-        t=t_plot,
-        u=u_plot,
-        y_true=h_true,
-        dy_dt_true=dh_dt_true,
-        y_sim_list=[h_sim_own_mlp, h_sim_torch_mlp],
-        dy_dt_sim_list=[dh_dt_sim_own_mlp, dh_dt_sim_torch_mlp],
-        legend_sim=["OWN MLP", "TORCH MLP"],
-        title=f"Weryfikacja modelu na danych testowych (trajektoria: {idx})"
-    )
+    # # --- Wykres ---
+    # SystemPlotter.plot(
+    #     t=t_plot,
+    #     u=u_plot,
+    #     y_true=h_true,
+    #     dy_dt_true=dh_dt_true,
+    #     y_sim_list=[h_sim_torch_mlp],
+    #     dy_dt_sim_list=[dh_dt_sim_torch_mlp],
+    #     legend_sim=["OWN MLP", "TORCH MLP"],
+    #     title=f"Weryfikacja modelu na danych testowych (trajektoria: {idx})"
+    # )
 
 #  Wyświetlenie tabeli metryk na koniec
-comparison_df = summarizer.summarize()
+comparison_df = summarizer.show_all()
 
 # Opcjonalnie: Znajdź najlepszy model dla Trajektorii 0
 best_name, best_val = summarizer.get_best_model("MSE")
