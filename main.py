@@ -26,8 +26,8 @@ test_dataset_count = 200
 dataset_name = "Dataset2"
 
 # --- model
-train_and_save = True
-load = False
+train_and_save = False
+load = True
 epochs = 100
 
 # -----------------------------

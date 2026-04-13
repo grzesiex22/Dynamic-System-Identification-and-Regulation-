@@ -193,6 +193,7 @@ class DatasetCreator:
                 "system_object": str(self.obj.__class__.__name__),
                 "dt": self.dt,
                 "t_end": self.t_end,
+                "amp_tange": self.amp_range
             },
             "dataset_structure": {
                 "total_trajectories": u_shape[0],
