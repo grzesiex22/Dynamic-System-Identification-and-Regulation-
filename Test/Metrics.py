@@ -110,26 +110,28 @@ class MetricsSummarizer:
 
         return avg_df
 
-    def save_all_to_file(self, dataset="Dataset1", folder="Reports"):
-        # Używamy os.makedirs z exist_ok=True, aby stworzył wszystkie podfoldery
-        full_path_dir = os.path.join(os.getcwd(), folder)
+    def save_all_to_file(self, dataset="Dataset1", folder="Results"):
+        # Tworzymy ścieżkę: Results/Dataset1
+        full_path_dir = os.path.join(os.getcwd(), folder, dataset)
         os.makedirs(full_path_dir, exist_ok=True)
 
+        # Plik ląduje bezpośrednio w folderze datasetu
         path = os.path.join(full_path_dir, f"{dataset}_test_results.csv")
 
         df = pd.DataFrame.from_dict(self.results, orient='index')
         df.to_csv(path)
         print(f"💾 Metryki zapisane w: {path}")
 
-    def save_averages_to_file(self, dataset="Dataset1", folder="Reports"):
+    def save_averages_to_file(self, dataset="Dataset1", folder="Results"):
         """
-        Zapisuje tylko uśrednione wyniki modeli do osobnego pliku.
+        Zapisuje tylko uśrednione wyniki modeli do osobnego pliku w podfolderze datasetu.
         """
         avg_df = self.get_overall_average()
-        if avg_df is None: return
+        if avg_df is None:
+            return
 
-        # Tworzenie folderu (ten sam schemat co wcześniej)
-        target_dir = os.path.join(os.getcwd(), folder)
+        # Tworzymy ścieżkę: Results/Dataset1
+        target_dir = os.path.join(os.getcwd(), folder, dataset)
         os.makedirs(target_dir, exist_ok=True)
 
         path = os.path.join(target_dir, f"{dataset}_test_avg_results.csv")
@@ -146,7 +148,7 @@ class MetricsSummarizer:
             print("Brak danych do uśrednienia.")
             return
 
-        col_w = 12
+        col_w = 20
         # Nagłówki (Model + nazwy metryk)
         headers = ["Model"] + list(avg_df.columns)
         header_str = " | ".join(f"{h:^{col_w}}" for h in headers)

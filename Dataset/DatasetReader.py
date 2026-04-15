@@ -1,3 +1,6 @@
+import glob
+import os
+
 import numpy as np
 from matplotlib import pyplot as plt
 from Dataset.DatasetHandler import DatasetHandler
@@ -17,6 +20,44 @@ class DatasetReader:
         self.data_list = []
         self.folder = None
         self.filename = None
+
+    def find_and_read(self, folder, mode, noise_level=0.0):
+        """
+        folder: np. 'Dataset5'
+        mode: np. 'train'
+        noise_level: 0.2 lub 0.0
+        """
+        import glob
+        import os
+
+        # Budujemy bazowy wzorzec wyszukiwania
+        if noise_level > 0.0:
+            # Formatowanie %g usuwa zbędne zera po przecinku (np. 1.0 -> 1, 0.2 -> 0.2)
+            noise_str = "%g" % noise_level
+            pattern = f"{mode}_dataset_*_noise_{noise_str}.npz"
+        else:
+            # Szukamy czystych plików
+            pattern = f"{mode}_dataset_*.npz"
+
+        search_path = os.path.join("Dataset", folder, pattern)
+        all_matches = glob.glob(search_path)
+
+        # --- KRYTYCZNY FILTR ---
+        if noise_level == 0.0:
+            # Jeśli chcemy CLEAN, bierzemy tylko pliki BEZ słowa 'noise' w nazwie
+            matches = [f for f in all_matches if "_noise_" not in os.path.basename(f)]
+        else:
+            matches = all_matches
+
+        if len(matches) == 0:
+            raise FileNotFoundError(f"❌ Nie znaleziono pliku dla {mode} (noise={noise_level}) w {folder}")
+
+        if len(matches) > 1:
+            raise RuntimeError(f"⚠️ Za dużo plików pasuje do wzorca w {folder} dla {mode}!")
+
+        filename = os.path.basename(matches[0])
+        print(f"📂 Wczytuję: {filename}")
+        return self.read_all(folder=folder, filename=filename)
 
     def read_all(self, folder="Dataset1", filename="train_set.npz"):
         """
@@ -90,4 +131,43 @@ class DatasetReader:
 
         plt.show(block=True)
 
+    def check_available_variants(self, folder):
+        """
+        Skanuje folder i sprawdza, czy są komplety plików (train, val, test).
+        Zwraca listę słowników z dostępnymi wariantami.
+        """
+        variants = []
+        path = os.path.join(os.getcwd(), "Dataset", folder)
+
+        if not os.path.exists(path):
+            return variants
+
+        all_files = os.listdir(path)
+
+        # 1. Sprawdzamy wersję CLEAN (pliki .npz bez słowa 'noise')
+        clean_files = [f for f in all_files if f.endswith('.npz') and 'noise' not in f]
+        has_clean = all(any(f.startswith(mode) for f in clean_files) for mode in ['train', 'val', 'test'])
+
+        if has_clean:
+            variants.append({"name": "CLEAN", "noise": 0.0})
+
+        # 2. Sprawdzamy wersję NOISY
+        # Szukamy unikalnych poziomów szumu w nazwach plików
+        noise_levels = set()
+        for f in all_files:
+            if '_noise_' in f and f.endswith('.npz'):
+                # Wyciągamy wartość szumu z nazwy (np. '0.05' z '...noise_0.05.npz')
+                parts = f.replace('.npz', '').split('_noise_')
+                if len(parts) > 1:
+                    noise_levels.add(parts[1])
+
+        for nl in noise_levels:
+            # Sprawdzamy czy dla tego konkretnego szumu mamy komplet 3 plików
+            noisy_files = [f for f in all_files if f"noise_{nl}" in f]
+            has_noisy_set = all(any(f.startswith(mode) for f in noisy_files) for mode in ['train', 'val', 'test'])
+
+            if has_noisy_set:
+                variants.append({"name": f"NOISY_{nl}", "noise": float(nl)})
+
+        return variants
 

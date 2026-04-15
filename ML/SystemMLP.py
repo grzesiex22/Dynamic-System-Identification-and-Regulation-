@@ -138,7 +138,7 @@ class SystemMLP:
             })
 
             if epochs_no_improve >= patience:
-                print(f"\n🛑 Early Stopping! Brak poprawy przez {patience} epok. Aktualna epoka: {epoch}")
+                print(f"🛑 Early Stopping! Brak poprawy przez {patience} epok. Aktualna epoka: {epoch}")
                 break
 
         # Przywracamy najlepsze wagi znalezione podczas całego procesu
@@ -205,14 +205,21 @@ class SystemMLP:
         from Generators.SystemData import SystemData
         return SystemData(y=h_sim, u=u_new, t=t, dydt=dh_dt_sim)
 
-    def save_model(self, folder="Saved_models", dataset="Dataset1"):
+    def save_model(self, folder="Saved_models", dataset="Dataset1", base_name="Model"):
         """
-        Zapisuje wagi (.pth) i pełną konfigurację z historią (.json).
+        Zapisuje model do pliku .npz.
+        Zapisuje metadane modelu do pliku .json.
+
+        Args:
+            folder (str): Ścieżka do podfolderu z modelami.
+            dataset (str): nazwa datasetu
+            base_name (str): nazwa modelu
         """
-        full_dir = os.path.join(self.BASE_DIR, folder)
+
+        full_dir = os.path.join(self.BASE_DIR, folder, dataset)
         os.makedirs(full_dir, exist_ok=True)
 
-        base_path = os.path.join(full_dir, f"{dataset}_PyTorchMLP")
+        base_path = os.path.join(full_dir, base_name)
 
         # 1. Zapis wag PyTorch
         torch.save(self.model.state_dict(), f"{base_path}.pth")
@@ -228,37 +235,47 @@ class SystemMLP:
             "training_history": self.training_history
         }
 
-        with open(f"{base_path}.json", "w", encoding="utf-8") as f:
+        with open(f"{base_path}_info.json", "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=4, ensure_ascii=False)
 
-        print(f"✅ Model i JSON zapisane: {base_path}")
+        print(f"✅ Model i metadane zapisane w: {full_dir} jako {base_name}")
 
-    def load_model(self, folder="Saved_models", dataset="Dataset1"):
+    def load_model(self, folder="Saved_models", dataset="Dataset1", base_name="Model"):
         """
-        Wczytuje model i przywraca jego architekturę oraz historię.
+        Wczytuje model z odpowiedniego podfolderu datasetu.
         """
-        base_path = os.path.join(self.BASE_DIR, folder, f"{dataset}_PyTorchMLP")
+        # Budujemy identyczną ścieżkę jak przy zapisie
+        base_path = os.path.join(self.BASE_DIR, folder, dataset, base_name)
+        metadata_path = f"{base_path}_info.json"
+        model_path = f"{base_path}.pth"
 
-        # 1. Wczytaj JSON, żeby wiedzieć jak zbudować sieć
-        with open(f"{base_path}.json", "r", encoding="utf-8") as f:
-            metadata = json.load(f)
+        try:
 
-        self.input_dim = metadata["model_arch"]["input_dim"]
-        self.hidden_dim = metadata["model_arch"]["hidden_dim"]
-        self.output_dim = metadata["model_arch"]["output_dim"]
-        self.training_config = metadata["training_config"]
-        self.training_history = metadata["training_history"]
+            # 1. Wczytaj JSON, żeby wiedzieć jak zbudować sieć
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
 
-        # 2. Przebuduj model nn.Sequential (na wypadek gdyby parametry się zmieniły)
-        self.model = nn.Sequential(
-            nn.Linear(self.input_dim, self.hidden_dim),
-            nn.Tanh(),
-            nn.Linear(self.hidden_dim, self.hidden_dim),
-            nn.Tanh(),
-            nn.Linear(self.hidden_dim, self.output_dim)
-        )
+            self.input_dim = metadata["model_arch"]["input_dim"]
+            self.hidden_dim = metadata["model_arch"]["hidden_dim"]
+            self.output_dim = metadata["model_arch"]["output_dim"]
+            self.training_config = metadata["training_config"]
+            self.training_history = metadata["training_history"]
 
-        # 3. Wczytaj wagi binarne
-        self.model.load_state_dict(torch.load(f"{base_path}.pth"))
-        self.model.eval()
-        print(f"📖 Model wczytany. Najlepsza epoka: {self.training_history['best_epoch']}")
+            # 2. Przebuduj model nn.Sequential (na wypadek gdyby parametry się zmieniły)
+            self.model = nn.Sequential(
+                nn.Linear(self.input_dim, self.hidden_dim),
+                nn.Tanh(),
+                nn.Linear(self.hidden_dim, self.hidden_dim),
+                nn.Tanh(),
+                nn.Linear(self.hidden_dim, self.output_dim)
+            )
+
+            # 3. Wczytaj wagi binarne
+            self.model.load_state_dict(torch.load(model_path))
+            self.model.eval()
+
+            print(f"📖 Model {base_name} wczytany z folderu {dataset}.")
+            print(f"   Najlepsza epoka: {self.training_history.get('best_epoch', 'N/A')}")
+
+        except FileNotFoundError:
+                print(f"❌ BŁĄD: Nie znaleziono plików modelu {base_path} w {os.path.join(folder, dataset)}")

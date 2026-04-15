@@ -316,7 +316,7 @@ class OwnSystemMLP:
             if epochs_no_improve >= patience:
                 if verbose:
                     print(
-                        f"\nEarly Stopping! Brak poprawy przez {patience} epok. "
+                        f"🛑 Early Stopping! Brak poprawy przez {patience} epok. "
                         f"Aktualna epoka: {epoch}"
                     )
                 break
@@ -326,7 +326,7 @@ class OwnSystemMLP:
             self.set_parameters(self.best_model_state)
             if verbose:
                 print(
-                    f"Przywrócono najlepszy model "
+                    f"✅ Przywrócono najlepszy model "
                     f"(Val MSE: {best_val_loss:.8f}) z epoki {self.best_epoch_nr + 1}"
                 )
 
@@ -402,19 +402,22 @@ class OwnSystemMLP:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=4, ensure_ascii=False)
 
-    def save_model(self, folder="Saved_models", dataset="Dataset1", save_optimizer=False):
+    def save_model(self, folder="Saved_models", dataset="Dataset1", base_name="Model", save_optimizer=False):
         """
         Zapisuje model do pliku .npz.
+        Zapisuje metadane modelu do pliku .json.
 
         Args:
             folder (str): Ścieżka do podfolderu z modelami.
             dataset (str): nazwa datasetu
+            base_name (str): nazwa modelu
             save_optimizer (bool): Czy zapisywać stany Adama.
         """
-        full_folder_path = os.path.join(self.BASE_DIR, folder)
-        os.makedirs(full_folder_path, exist_ok=True)
 
-        base_filepath = os.path.join(full_folder_path, f"{dataset}_OwnMLP")
+        full_dir = os.path.join(self.BASE_DIR, folder, dataset)
+        os.makedirs(full_dir, exist_ok=True)
+
+        base_path = os.path.join(full_dir, base_name)
 
         save_dict = {
             "W1": self.W1,
@@ -454,11 +457,12 @@ class OwnSystemMLP:
             save_dict["v_b3"] = self.v["b3"]
 
         # --- ZAPIS MODELU (.npz) i METADANYCH (.json) ---
-        np.savez(f"{base_filepath}.npz", **save_dict)
-        self.save_metadata(f"{base_filepath}.json")
-        print(f"✅ Model i metadane zapisane do: {base_filepath}.*")
+        np.savez(f"{base_path}.npz", **save_dict)
+        self.save_metadata(f"{base_path}_info.json")
 
-    def load_model(self, folder="Saved_models", dataset="Dataset1", load_optimizer=False):
+        print(f"✅ Model i metadane zapisane w: {full_dir} jako {base_name}")
+
+    def load_model(self, folder="Saved_models", dataset="Dataset1", base_name="Model", load_optimizer=False):
         """
         Wczytuje model z pliku .npz.
 
@@ -467,61 +471,77 @@ class OwnSystemMLP:
             load_optimizer (bool): Czy wczytywać stany Adama.
         """
         # Ścieżka musi być IDENTYCZNA jak w save_model
-        filepath = os.path.join(self.BASE_DIR, folder, f"{dataset}_OwnMLP.npz")
+        base_path = os.path.join(self.BASE_DIR, folder, dataset, base_name)
+        metadata_path = f"{base_path}_info.json"
+        model_path = f"{base_path}.npz"
 
-        if not os.path.exists(filepath):
-            # Jeśli nie znajdzie, szukamy bezpośrednio po pełnej ścieżce (fallback)
-            print(f"⚠️ Nie znaleziono w {filepath}, sprawdzam ścieżkę bezpośrednią...")
-            if not os.path.exists(filepath):
-                raise FileNotFoundError(f"❌ Nie znaleziono pliku modelu: {filepath}")
+        try:
+            if not os.path.exists(model_path):
+                # Jeśli nie znajdzie, szukamy bezpośrednio po pełnej ścieżce (fallback)
+                print(f"⚠️ Nie znaleziono w {model_path}, sprawdzam ścieżkę bezpośrednią...")
+                if not os.path.exists(model_path):
+                    raise FileNotFoundError(f"❌ Nie znaleziono pliku modelu: {model_path}")
 
-        data = np.load(filepath, allow_pickle=True)
+            data = np.load(model_path, allow_pickle=True)
 
-        self.W1 = data["W1"]
-        self.b1 = data["b1"]
-        self.W2 = data["W2"]
-        self.b2 = data["b2"]
-        self.W3 = data["W3"]
-        self.b3 = data["b3"]
+            self.W1 = data["W1"]
+            self.b1 = data["b1"]
+            self.W2 = data["W2"]
+            self.b2 = data["b2"]
+            self.W3 = data["W3"]
+            self.b3 = data["b3"]
 
-        self.input_dim = int(data["input_dim"][0])
-        self.hidden_dim = int(data["hidden_dim"][0])
-        self.output_dim = int(data["output_dim"][0])
-        self.seed = int(data["seed"][0])
-        self.best_epoch_nr = int(data["best_epoch_nr"][0])
+            self.input_dim = int(data["input_dim"][0])
+            self.hidden_dim = int(data["hidden_dim"][0])
+            self.output_dim = int(data["output_dim"][0])
+            self.seed = int(data["seed"][0])
+            self.best_epoch_nr = int(data["best_epoch_nr"][0])
 
-        if all(key in data.files for key in ["best_W1", "best_b1", "best_W2", "best_b2", "best_W3", "best_b3"]):
-            self.best_model_state = {
-                "W1": data["best_W1"],
-                "b1": data["best_b1"],
-                "W2": data["best_W2"],
-                "b2": data["best_b2"],
-                "W3": data["best_W3"],
-                "b3": data["best_b3"],
-            }
-        else:
-            self.best_model_state = None
+            if all(key in data.files for key in ["best_W1", "best_b1", "best_W2", "best_b2", "best_W3", "best_b3"]):
+                self.best_model_state = {
+                    "W1": data["best_W1"],
+                    "b1": data["best_b1"],
+                    "W2": data["best_W2"],
+                    "b2": data["best_b2"],
+                    "W3": data["best_W3"],
+                    "b3": data["best_b3"],
+                }
+            else:
+                self.best_model_state = None
 
-        self._init_optimizer_states()
+            self._init_optimizer_states()
 
-        if load_optimizer:
-            opt_keys = [
-                "m_W1", "m_b1", "m_W2", "m_b2", "m_W3", "m_b3",
-                "v_W1", "v_b1", "v_W2", "v_b2", "v_W3", "v_b3",
-            ]
-            if all(key in data.files for key in opt_keys):
-                self.m["W1"] = data["m_W1"]
-                self.m["b1"] = data["m_b1"]
-                self.m["W2"] = data["m_W2"]
-                self.m["b2"] = data["m_b2"]
-                self.m["W3"] = data["m_W3"]
-                self.m["b3"] = data["m_b3"]
+            if load_optimizer:
+                opt_keys = [
+                    "m_W1", "m_b1", "m_W2", "m_b2", "m_W3", "m_b3",
+                    "v_W1", "v_b1", "v_W2", "v_b2", "v_W3", "v_b3",
+                ]
+                if all(key in data.files for key in opt_keys):
+                    self.m["W1"] = data["m_W1"]
+                    self.m["b1"] = data["m_b1"]
+                    self.m["W2"] = data["m_W2"]
+                    self.m["b2"] = data["m_b2"]
+                    self.m["W3"] = data["m_W3"]
+                    self.m["b3"] = data["m_b3"]
 
-                self.v["W1"] = data["v_W1"]
-                self.v["b1"] = data["v_b1"]
-                self.v["W2"] = data["v_W2"]
-                self.v["b2"] = data["v_b2"]
-                self.v["W3"] = data["v_W3"]
-                self.v["b3"] = data["v_b3"]
+                    self.v["W1"] = data["v_W1"]
+                    self.v["b1"] = data["v_b1"]
+                    self.v["W2"] = data["v_W2"]
+                    self.v["b2"] = data["v_b2"]
+                    self.v["W3"] = data["v_W3"]
+                    self.v["b3"] = data["v_b3"]
 
-        print(f"Model wczytany z: {filepath}")
+            # 1. Wczytaj JSON, żeby wiedzieć jak zbudować sieć
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+
+            self.input_dim = metadata["model_arch"]["input_dim"]
+            self.hidden_dim = metadata["model_arch"]["hidden_dim"]
+            self.output_dim = metadata["model_arch"]["output_dim"]
+            self.training_config = metadata["training_config"]
+            self.training_history = metadata["training_history"]
+
+            print(f"📖 Model wczytany z {base_path}. \nNajlepsza epoka: {self.training_history['best_epoch']}")
+
+        except FileNotFoundError:
+            print(f"❌ BŁĄD: Nie znaleziono plików modelu {base_path} w {os.path.join(folder, dataset)}")

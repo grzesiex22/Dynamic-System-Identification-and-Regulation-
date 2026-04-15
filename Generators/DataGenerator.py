@@ -23,6 +23,8 @@ class DataGenerator:
             u_func (callable): Funkcja czasu (np. obiekt klasy APRBSSignal),
                 zwracająca wartość sterowania u dla zadanej chwili t.
             dt (float): Krok próbkowania wyjściowego zbioru danych [s].
+            noise_level (float): Odchylenie standardowe (sigma) szumu Gaussa.
+                                             0.0 oznacza brak szumu.
         """
 
         self.obj = obj
@@ -68,10 +70,45 @@ class DataGenerator:
             atol=1e-9  # Tolerancja bezwzględna
         )
 
+        # Pobieramy czyste stany (Ground Truth)
+        y_values = sol.y.T  # Macierz [N x 2] (h1, h2)
+
         # Synchronizacja: wyznaczenie wartości sterowania dokładnie dla tych chwil,
         # które zwrócił solver. To kluczowe dla poprawnego treningu sieci MLP.
         u_values = np.array([self.u_func(ti) for ti in sol.t])
 
         # Pakowanie wyników do kontenera SystemData.
         # sol.y jest transponowane z [dim_y x N] na [N x dim_y].
-        return SystemData(sol.y.T, u_values, sol.t)
+        return SystemData(y_values, u_values, sol.t)
+
+    def add_noise(self, system_data: SystemData, noise_level=0.1):
+        """
+        Przeprowadza proces całkowania numerycznego metodą adaptacyjną Rungego-Kutty (RK45).
+
+        Metoda rozwiązuje problem początkowy (Initial Value Problem), wyznaczając
+        ewolucję stanów obiektu. Wynik jest synchronizowany z wymuszeniem u i pakowany
+        w ustandaryzowany kontener SystemData.
+
+        Returns:
+            SystemData: Obiekt zawierający zsynchronizowane trajektorie:
+                - y (np.ndarray): Macierz stanów wyjściowych (np. h1, h2) [N x dim_y].
+                - u (np.ndarray): Macierz zastosowanych sterowań [N x dim_u].
+                - t (np.ndarray): Wektor czasu symulacji [N].
+        """
+
+        # Pobieramy czyste stany (Ground Truth)
+        y_values = system_data.y  # Macierz [N x 2] (h1, h2)
+
+        # --- Dodawanie szumu pomiarowego ---
+
+        # Generujemy szum o rozkładzie normalnym (Gauss) dla każdego punktu pomiarowego
+        # np.random.normal(lokalizacja, skala, rozmiar)
+        noise = np.random.normal(0, noise_level, y_values.shape)
+        y_values = y_values + noise
+
+        # Zapewnienie, że wysokość nie spadnie poniżej 0 przez szum
+        y_values = np.maximum(y_values, 0)
+
+        # Pakowanie wyników do kontenera SystemData.
+        # sol.y jest transponowane z [dim_y x N] na [N x dim_y].
+        return SystemData(y_values, system_data.u, system_data.t)

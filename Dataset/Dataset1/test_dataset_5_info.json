@@ -1,0 +1,85 @@
+{
+    "metadata": {
+        "date": "2026-04-15 20:29:47",
+        "filename": "test_dataset_5.npz",
+        "system_object": "CoupledTanks1",
+        "dt": 0.5,
+        "t_end": 1000,
+        "amp_tange": [
+            3,
+            15
+        ],
+        "noise_level": 0.01
+    },
+    "dataset_structure": {
+        "total_trajectories": 5,
+        "points_per_trajectory": {
+            "raw_u_y": 2000,
+            "derivative_dydt": 1999
+        },
+        "dimensions": {
+            "u_control_dim": 1,
+            "y_state_dim": 2,
+            "dydt_dim": 2
+        }
+    },
+    "statistics": {
+        "aprbs": 0,
+        "multisine": 4,
+        "noise": 1
+    },
+    "signals_config": {
+        "aprbs": {
+            "h_min_range": [
+                50,
+                150
+            ],
+            "h_add_range": [
+                100,
+                300
+            ]
+        },
+        "multisine": {
+            "n_freqs_range": [
+                5,
+                15
+            ],
+            "f_max_range": [
+                0.005,
+                0.02
+            ]
+        },
+        "noise": {
+            "cutoff_range": [
+                0.001,
+                0.01
+            ]
+        }
+    },
+    "run_history": [
+        {
+            "type": "noise",
+            "cutoff": 0.008411646236159878
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 14,
+            "f_max": 0.017236124280815484
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 13,
+            "f_max": 0.018248986202064263
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 9,
+            "f_max": 0.010554077951740572
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 12,
+            "f_max": 0.00526440563569142
+        }
+    ]
+}

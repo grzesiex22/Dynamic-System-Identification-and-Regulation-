@@ -1,3 +1,4 @@
+import glob
 import json
 from datetime import datetime
 from tqdm import tqdm
@@ -16,7 +17,7 @@ class DatasetCreator:
     łącząc różne typy wymuszeń (APRBS, Multisine, Noise) w jeden zbiór.
     """
 
-    def __init__(self, obj, t_end=1000, dt=0.5, amp_range=(3, 9)):
+    def __init__(self, obj, t_end=1000, dt=0.5, amp_range=(3, 9), noise_level=0.0):
         """
         Inicjalizacja kreatora zbioru danych.
 
@@ -31,6 +32,7 @@ class DatasetCreator:
         self.t_end = t_end
         self.dt = dt
         self.amp_range = amp_range
+        self.noise_level = noise_level
 
         # --- KONFIGURACJA ZAKRESÓW LOSOWANIA PARAMETRÓW SYGNAŁÓW ---
         self.config = {
@@ -49,7 +51,8 @@ class DatasetCreator:
 
         # --- STATYSTYKI I HISTORIA ---
         self.stats = {'aprbs': 0, 'multisine': 0, 'noise': 0}
-        self.generated_signals = []     # Przechowuje kilka sygnałów do wizualizacji
+        self.generated_clean_signals = []     # Przechowuje kilka sygnałów do wizualizacji
+        self.generated_noise_signals = []
         self.history = []               # Log parametrów każdego wygenerowanego przebiegu
 
     def _get_random_signal(self):
@@ -91,7 +94,7 @@ class DatasetCreator:
         self.history.append(run_params)
         return sig
 
-    def create_dataset(self, n_trajectories, folder="Dataset1", filename="train_set.npz"):
+    def create_dataset(self, n_trajectories, mode="train", folder="Dataset1"):
         """
             Generuje zadaną liczbę trajektorii i zapisuje je do skompresowanego pliku binarnego.
             Dodatkowo generuje raport JSON z parametrami sygnałów.
@@ -101,48 +104,98 @@ class DatasetCreator:
                 folder (str): Podfolder zapisu (wewnątrz katalogu Dataset).
                 filename (str): Nazwa pliku wyjściowego (.npz).
         """
+        # --- GENEROWANIE ŚCIEŻEK ---
+        base_filename = f"{mode}_dataset_{n_trajectories}.npz"
+        noise_filename = f"{mode}_dataset_{n_trajectories}_noise_{self.noise_level}.npz"
 
-        U_list, Y_list, DYDT_list, T = [], [], [], []
-        self.generated_signals = []  # Resetujemy listę podglądu
+        # Ścieżka do sprawdzania (szukamy dowolnego pliku dla danego trybu w tym folderze)
+        search_pattern = os.path.join("Dataset", folder, f"{mode}_dataset_*.npz")
+        existing_files = glob.glob(search_pattern)
+
+        # --- BEZPIECZNIK (ZABEZPIECZENIE) ---
+        if existing_files:
+            print("\n" + "!" * 90)
+            print(f"⚠️  ALARM: Wykryto istniejące zbiory danych w folderze '{folder}'!")
+            print("-" * 60)
+            for f in existing_files:
+                print(f"   • Znaleziono: {os.path.basename(f)}")
+
+            print("\n🛑 INSTRUKCJA BEZPIECZEŃSTWA:")
+            print("1. Musisz RĘCZNIE usunąć powyższe pliki (wszystkie z wybranego folderu), jeśli chcesz wygenerować nowe.")
+            print("2. PAMIĘTAJ: Jeśli zmienisz dane, Twoje dotychczasowe modele MLP (Folder /ML/Saved_models)")
+            print("   wytrenowane na tym folderze mogą stać się NIEAKTUALNE i należy je usunąć.")
+            print("   Dodatkowo należy usunąć wykresy (Folder /Results/Plots), metryki (Folder /Results/Reports.")
+            print("-" * 90)
+            print("Przerwanie procesu w celu ochrony spójności danych...")
+            print("!" * 90 + "\n")
+            return 1 # Kończymy funkcję, nic nie generujemy
+
+        U_list, Y_list, DYDT_list = [], [], []
+        U_noise_list, Y_noise_list, DYDT_noise_list = [], [], []
+        T = []
+
+        self.generated_clean_signals = []  # Resetujemy listę podglądu
+        self.generated_noise_signals = []  # Resetujemy listę podglądu
+
         self.history = []  # Reset historii
         self.stats = {'aprbs': 0, 'multisine': 0, 'noise': 0}
 
-        print(f"\n--- Start generowania zestawu {n_trajectories} przebiegów: {filename} ---")
+        print(f"\n--- Start generowania zestawu {n_trajectories} przebiegów: {base_filename} ---")
+        if self.noise_level > 0.0:
+            print(f"--- Dodatkowy zestaw {n_trajectories} przebiegów z poziomem szumu {self.noise_level}: {noise_filename} ---")
 
         # tqdm automatycznie stworzy pasek postępu
-        for i in tqdm(range(n_trajectories), desc="Postęp generowania"):
+        for i in tqdm(range(n_trajectories), desc=f"Generowanie {mode}"):
             # 1. Losowanie i tworzenie sygnału sterującego
             u_func = self._get_random_signal()
 
             # Zapisujemy tylko pierwsze 10 sygnałów do ewentualnego podglądu (oszczędność RAM)
-            if len(self.generated_signals) < 10:
-                self.generated_signals.append(u_func)
+            if len(self.generated_clean_signals) < 10:
+                self.generated_clean_signals.append(u_func)
 
-            # 2. Symulacja obiektu przy pomocy DataGeneratora
-            gen = DataGenerator(self.obj, u_func, self.dt)
-            system_data = gen.generate()
+            # Symulacja obiektu przy pomocy DataGeneratora
+            gen = DataGenerator(obj=self.obj, u_func=u_func, dt=self.dt)
+            system_data_clean = gen.generate()
 
-            # 3. Agregacja danych do list
-            U_list.append(system_data.u)
-            Y_list.append(system_data.y)
-            DYDT_list.append(system_data.dy_dt)
+            # Agregacja danych CZYSTYCH do list
+            U_list.append(system_data_clean.u)
+            Y_list.append(system_data_clean.y)
+            DYDT_list.append(system_data_clean.dy_dt)
+
+            # Agregacja danych ZASZUMIONYCH
+            if self.noise_level > 0.0:
+                system_noise_data = gen.add_noise(system_data_clean, noise_level=self.noise_level)
+
+                # Sterowanie u i pochodne dy_dt zostają te same (szumimy tylko pomiar h)
+                U_noise_list.append(system_noise_data.u)
+                Y_noise_list.append(system_noise_data.y)  # Tutaj są zaszumione h1, h2
+                DYDT_noise_list.append(system_noise_data.dy_dt)
 
             if i == 0:
-                T = system_data.t
+                T = system_data_clean.t
 
         # Konwersja list na macierze numpy o kształcie (trajektorie, próbki, wymiar)
-        U_final = np.stack(U_list)
-        Y_final = np.stack(Y_list)
-        DYDT_final = np.stack(DYDT_list)
+        U_clean_final = np.stack(U_list)
+        Y_clean_final = np.stack(Y_list)
+        DYDT_clean_final = np.stack(DYDT_list)
 
         # Zapis binarny za pomocą DatasetHandler
-        DatasetHandler.save(U_final, Y_final, DYDT_final, T, filename, folder)
+        DatasetHandler.save(U_clean_final, Y_clean_final, DYDT_clean_final, T, base_filename, folder)
+
+        if self.noise_level > 0.0:
+            U_noise_final = np.stack(U_noise_list)
+            Y_noise_final = np.stack(Y_noise_list)
+            DYDT_noise_final = np.stack(DYDT_noise_list)
+
+            DatasetHandler.save(U_noise_final, Y_noise_final, DYDT_noise_final, T, noise_filename, folder)
 
         print(f"\tStatystyki: {self.stats}")
 
         # Zapis raportu JSON
-        self._save_report(filename, folder, U_final.shape, Y_final.shape, DYDT_final.shape)
+        self._save_report(base_filename, folder, U_clean_final.shape, Y_clean_final.shape, DYDT_clean_final.shape)
         # print("-" * 60)
+
+        return 0
 
     def show_random_signals(self, n=3):
         """
@@ -152,16 +205,16 @@ class DatasetCreator:
             n (int): Liczba losowych sygnałów do wyświetlenia.
         """
 
-        if not self.generated_signals:
+        if not self.generated_clean_signals:
             print("\n❌ Brak sygnałów do wyświetlenia. Uruchom najpierw create_dataset.")
             return
 
-        n = min(n, len(self.generated_signals))
-        indices = np.random.choice(len(self.generated_signals), n, replace=False)
+        n = min(n, len(self.generated_clean_signals))
+        indices = np.random.choice(len(self.generated_clean_signals), n, replace=False)
 
         plt.figure(figsize=(12, 3 * n))
         for i, idx in enumerate(indices):
-            sig = self.generated_signals[idx]
+            sig = self.generated_clean_signals[idx]
             plt.subplot(n, 1, i + 1)
             plt.plot(sig.t, sig.generate(), label=f"Typ: {type(sig).__name__}")
             plt.ylabel("Napięcie [V]")
@@ -193,7 +246,8 @@ class DatasetCreator:
                 "system_object": str(self.obj.__class__.__name__),
                 "dt": self.dt,
                 "t_end": self.t_end,
-                "amp_tange": self.amp_range
+                "amp_tange": self.amp_range,
+                "noise_level": self.noise_level
             },
             "dataset_structure": {
                 "total_trajectories": u_shape[0],
