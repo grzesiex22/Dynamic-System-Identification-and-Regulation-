@@ -34,8 +34,8 @@ noise_level = 0.01
 dataset_name = "Dataset1"
 
 # --- model - ogólne zmienne ---
-train_and_save = False
-load = True
+train_and_save = True
+load = False
 epochs = 50
 
 # --- Konfiguracja modeli ---
@@ -44,6 +44,12 @@ models = [
     {"obj": SystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Torch_MLP"},
     {"obj": OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Own_MLP"}
 ]
+
+# --- wykresy ---
+show_showcase_plot = True
+show_learning_plot = True
+show_testing_plot = True
+
 
 # --------------------------------------------------------------------------------------------------------------------
 # 1. Definicja obiektu dynamicznego
@@ -198,6 +204,8 @@ if not generate:
                     t_plot, u_plot, h_clean, dh_dt_clean = c_obj.get_data_to_plot()
                     _, _, h_noisy, dh_dt_noisy = n_obj.get_data_to_plot()
 
+                    v_noise_str = str(noisy_name).replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+
                     SystemPlotter.plot_noise_comparison(
                         t=t_plot,
                         u=u_plot,
@@ -205,8 +213,11 @@ if not generate:
                         dy_dt_true=dh_dt_clean,
                         y_noise=h_noisy,  # Bezpośrednio macierz
                         dy_dt_noise=dh_dt_noisy,  # Bezpośrednio macierz
-                        noise_label=[f"Zaszumione (std={v_noise})"],
-                        title=f"Showcase | Typ: {sig_type.upper()} | Clean vs {noisy_name}"
+                        noise_label=f"Zaszumione (std={v_noise})",
+                        title=f"Showcase | Typ: {sig_type.upper()} | Clean vs {noisy_name}",
+                        save_name=f"Showcase_t{idx}_{v_noise_str}_U_{sig_type.upper()}",
+                        dataset=dataset_name,
+                        show=show_showcase_plot
                     )
 
                 print(f"{Fore.CYAN}📺 Zamknij wykresy, aby rozpocząć proces uczenia/testowania.")
@@ -273,6 +284,19 @@ for v_name, data in loaded_data.items():
             model_obj.train(data["X_train"], data["Y_train"], data["X_val"], data["Y_val"], epochs=epochs)
             model_obj.save_model(base_name=save_id)
             print(Fore.GREEN + f"  💾 Zapisano model: {save_id}")
+
+        # --- Rysowanie krzywej uczenia ---
+        loss_save_name = f"Loss_{model_name}_{v_name}"
+        loss_save_name = loss_save_name.replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+
+        SystemPlotter.plot_learning_curves(
+            history=model_obj.training_history,
+            model_name=model_name,
+            dataset=dataset_name,
+            v_name=v_name,
+            save_name=loss_save_name,
+            show=show_learning_plot
+        )
 
     # --- Testowanie modeli ---
     print(f"\n{Fore.YELLOW}🧪 Rozpoczynam testy dla {v_name}...")
@@ -341,6 +365,8 @@ for var in available_variants:
         # 3. Wygeneruj wykres
         print(f"  {Fore.GREEN}└─ Generowanie wykresu dla: {sig_type.upper()} (index: {idx})")
 
+        v_noise_str = str(v_name).replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+
         SystemPlotter.plot(
             t=t_plot,
             u=u_plot,
@@ -349,7 +375,10 @@ for var in available_variants:
             y_sim_list=y_sim_list,
             dy_dt_sim_list=dy_sim_list,
             legend_sim=model_names,
-            title=f"Porównanie modeli | Typ: {sig_type.upper()} | Wariant: {v_name}"
+            title=f"Porównanie modeli | Typ: {sig_type.upper()} | Wariant: {v_name}",
+            save_name=f"Test_t{idx}_{v_noise_str}_U_{sig_type.upper()}",
+            dataset=dataset_name,
+            show=show_testing_plot
         )
 
 print(f"\n{Fore.GREEN}{Style.BRIGHT}✨ Wszystkie wykresy zostały wygenerowane!")

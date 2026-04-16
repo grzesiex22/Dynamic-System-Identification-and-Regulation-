@@ -116,7 +116,7 @@ class MetricsSummarizer:
         os.makedirs(full_path_dir, exist_ok=True)
 
         # Plik ląduje bezpośrednio w folderze datasetu
-        path = os.path.join(full_path_dir, f"{dataset}_test_results.csv")
+        path = os.path.join(full_path_dir, f"{dataset}_Test_results.csv")
 
         df = pd.DataFrame.from_dict(self.results, orient='index')
         df.to_csv(path)
@@ -134,7 +134,7 @@ class MetricsSummarizer:
         target_dir = os.path.join(os.getcwd(), folder, dataset)
         os.makedirs(target_dir, exist_ok=True)
 
-        path = os.path.join(target_dir, f"{dataset}_test_avg_results.csv")
+        path = os.path.join(target_dir, f"{dataset}_Test_avg_results.csv")
 
         avg_df.to_csv(path)
         print(f"🏆 Średnie wyniki zapisane w: {path}")

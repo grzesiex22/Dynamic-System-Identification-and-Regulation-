@@ -1,3 +1,5 @@
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -5,7 +7,7 @@ import numpy as np
 class SystemPlotter:
     @staticmethod
     def plot(t, u, y_true, dy_dt_true, y_sim_list=None, dy_dt_sim_list=None, legend_sim=None,
-                        title="System Dynamics Comparison"):
+                        title="System Dynamics Comparison", save_name=None, dataset=None, folder="Results", show=True):
         """
         Rozbudowana wizualizacja porównująca wiele symulacji na 5 subplotach.
 
@@ -18,6 +20,10 @@ class SystemPlotter:
             dy_dt_sim_list: lista macierzy [N x 2] z przewidzianymi pochodnymi (opcjonalne)
             legend_sim: lista nazw dla symulacji (np. ["MLP PyTorch", "MLP Manual"]) (opcjonalne)
             title: Tytuł główny
+            save_name (str): nazwa pliku
+            dataset (str): dataset
+            folder (str): folder
+            show (bool): jeśli True to wyświetli wykres, jeśli False to nie
         """
 
         # Inicjalizacja list, jeśli nie zostały podane
@@ -80,10 +86,20 @@ class SystemPlotter:
             ax.legend(loc='upper right', fontsize='small')
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+
+        # --- MODUŁ ZAPISU ---
+        if save_name and dataset and folder:
+            save_path = SystemPlotter.save(plt_=plt, save_name=save_name, dataset=dataset, folder=folder)
+            print(f"    💾 Wykres zapisany: {save_path}")
+
         plt.show(block=False)
 
+        if not show:
+            plt.close('all')
+
     def plot_noise_comparison(t, u, y_true, dy_dt_true, y_noise=None, dy_dt_noise=None,
-                              noise_label="Data with Noise", title="Data Integrity Check: Clean vs Noisy"):
+                              noise_label="Data with Noise", title="Data Integrity Check: Clean vs Noisy",
+                              save_name=None, dataset=None, folder="Results", show=True):
         """
         Wizualizacja porównująca dane czyste (True) z zaszumionymi (Noise) na 5 subplotach.
         Wszystkie linie są ciągłe.
@@ -136,7 +152,86 @@ class SystemPlotter:
             ax.legend(loc='upper right', fontsize='small')
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+
+        # --- MODUŁ ZAPISU ---
+        if save_name and dataset and folder:
+            save_path = SystemPlotter.save(plt_=plt, save_name=save_name, dataset=dataset, folder=folder)
+            print(f"    💾 Wykres zapisany: {save_path}")
+
         plt.show(block=False)
+
+        if not show:
+            plt.close('all')
+
+    @staticmethod
+    def plot_learning_curves(history, model_name="Model", dataset="", v_name="CLEAN", save_name="",
+                             folder="Results", show=True):
+        if not history or "train_loss" not in history:
+            return
+
+        plt.figure(figsize=(10, 6))
+        epochs = range(1, len(history["train_loss"]) + 1)
+
+        # --- Tłumaczenie wariantu na polski ---
+        if v_name.upper() == "CLEAN":
+            variant_desc = "Dane czyste"
+        else:
+            # Zamienia NOISY_0.01 na Szum: 0.01
+            variant_desc = v_name.replace("NOISY_", "Szum: ").replace("_", ".")
+
+        # Rysowanie głównych krzywych
+        plt.plot(epochs, history["train_loss"], 'b', label='Trening')
+        plt.plot(epochs, history["val_loss"], 'r', label='Walidacja')
+
+        # Obsługa "Best Epoch"
+        best_ep = history.get("best_epoch", 0)
+
+        # Sprawdzamy, czy best_ep jest sensowny (indeksowanie od 1)
+        if 0 < best_ep <= len(history["val_loss"]):
+            best_val_loss = history["val_loss"][best_ep - 1]
+
+            # Pionowa linia przerywana do osi X
+            plt.axvline(x=best_ep, color='green', linestyle='--', alpha=0.5, linewidth=1)
+
+            # Zielona kropka w punkcie najlepszego wyniku
+            plt.plot(best_ep, best_val_loss, 'go', markersize=8, label=f'Najlepsza epoka ({best_ep})')
+
+            # Napis przy kropce (Epoch i Value)
+            # Przesunięcie (offset) tekstu, żeby nie nachodził na kropkę
+            plt.text(best_ep, best_val_loss,
+                     f'  Epoka: {best_ep}\n  Strata: {best_val_loss:.8f}',
+                     color='green', fontweight='bold', va='bottom', ha='left')
+
+        # Estetyka wykresu
+        plt.yscale('log')  # Logarytmiczna oś Y dla lepszej widoczności
+        plt.title(f"Krzywa uczenia: {model_name}\nDataset: {dataset} ({variant_desc})")
+        plt.xlabel("Epoka")
+        plt.ylabel("Strata (skala logarytmiczna)")
+        plt.grid(True, which="both", ls="-", alpha=0.5)
+        plt.legend(loc='upper right')
+
+        # --- MODUŁ ZAPISU ---
+        if save_name and dataset and folder:
+            save_path = SystemPlotter.save(plt_=plt, save_name=save_name, dataset=dataset, folder=folder)
+            print(f"    💾 Krzywa uczenia zapisana: {save_path}")
+
+        plt.show(block=False)
+
+        if not show:
+            plt.close('all')
+
+    @staticmethod
+    def save(plt_, save_name=None, dataset=None, folder="Results"):
+        full_path_dir = os.path.join(os.getcwd(), folder, dataset)
+        os.makedirs(full_path_dir, exist_ok=True)
+
+        # Plik ląduje bezpośrednio w folderze datasetu
+        save_path = os.path.join(full_path_dir, f"{dataset}_{save_name}.png")
+
+        plt_.savefig(save_path, dpi=300, bbox_inches='tight')
+
+        return save_path
+
 
 # --- PRZYKŁAD UŻYCIA ---
 # plotter = SystemPlotter()
