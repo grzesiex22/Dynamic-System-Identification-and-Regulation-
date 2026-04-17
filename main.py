@@ -13,7 +13,8 @@ from ML.SystemMLP import SystemMLP
 from Objects.CoupledTanks import CoupledTanks1
 from Test.Metrics import Metrics, MetricsSummarizer
 from ML.ImplementationOfMLP import OwnSystemMLP
-
+from ML.SklearnSystemMLP import SklearnSystemMLP
+from ML.KerasSystemMLP import KerasSystemMLP
 
 # Inicjalizacja colorama (autoreset sprawia, że kolor wraca do normy po każdym princie)
 init(autoreset=True)
@@ -42,7 +43,9 @@ epochs = 50
 # Słownik konfiguracji model
 models = [
     {"obj": SystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Torch_MLP"},
-    {"obj": OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Own_MLP"}
+    {"obj": OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Own_MLP"},
+    {"obj": SklearnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Sklearn_MLP"},
+    {"obj": KerasSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Keras_MLP"},
 ]
 
 # --- wykresy ---
