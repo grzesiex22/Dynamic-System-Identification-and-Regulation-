@@ -1,5 +1,7 @@
 from tqdm import tqdm
+import time
 from Test.Metrics import Metrics
+
 
 class Tester:
     def __init__(self, test_objects):
@@ -23,11 +25,17 @@ class Tester:
                 _, _, _, dh_dt_true = test_obj.get_data_to_plot()
 
                 # 2. Symulacja (rekurencyjna)
+                start_time = time.perf_counter()
                 sim_obj = m_obj.simulate(t=t_to_sim, u_new=u_to_sim, h0=h0_to_sim, dh_dt0=dh_dt0_to_sim)
+                end_time = time.perf_counter()
+                duration = end_time - start_time
+
                 _, _, _, dh_dt_sim = sim_obj.get_data_to_plot()
 
                 # 3. Obliczanie metryk
                 sim_metrics = Metrics.evaluate(dh_dt_true, dh_dt_sim)
+                sim_metrics['Time [s]'] = duration
+                sim_metrics['Time [min]'] = duration/60
 
                 # 4. Dodawanie do wspólnego summarizera
                 summarizer.add_metrics(i, m_name, sim_metrics)

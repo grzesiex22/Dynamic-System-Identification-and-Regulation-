@@ -36,9 +36,9 @@ noise_level = 0.05
 dataset_name = "Dataset_test_1"
 
 # --- model - ogólne zmienne ---
-TRAIN_AND_SAVE = True
-LOAD = False
-TEST = False
+TRAIN_AND_SAVE = False
+LOAD = True
+TEST = True
 epochs = 500
 patience = 20
 
@@ -52,7 +52,7 @@ models = [
 ]
 
 # --- wykresy ---
-show_showcase_plot = True
+show_showcase_plot = False
 show_learning_plot = True
 show_testing_plot = True
 
