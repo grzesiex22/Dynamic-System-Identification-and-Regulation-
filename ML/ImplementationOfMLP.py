@@ -1,5 +1,6 @@
 import json
 import numpy as np
+import time
 import copy
 import os
 from tqdm import tqdm
@@ -39,8 +40,12 @@ class OwnSystemMLP:
             "train_loss": [],
             "val_loss": [],
             "lr": [],
+            "epoch_times": [],
             "best_epoch": 0,
-            "total_epochs": 0
+            "total_epochs": 0,
+            "total_training_time": 0.0,
+            "total_training_time_minutes": 0.0,
+            "avg_epoch_time": 0.0
         }
 
         def xavier_init(fan_in, fan_out):
@@ -238,6 +243,8 @@ class OwnSystemMLP:
             save_best_path (str|None): Jeśli podane, zapisuje najlepszy model do pliku.
             verbose (bool): Czy wypisywać logi.
         """
+        start_total_time = time.time()  # Start pomiaru całego procesu
+
         # Zapisujemy konfigurację "wejściową"
         self.training_config = {
             "lr": lr,
@@ -251,6 +258,10 @@ class OwnSystemMLP:
         self.training_history["train_loss"] = []
         self.training_history["val_loss"] = []
         self.training_history["lr"] = []
+        self.training_history["epoch_times"] = []  # Historia czasu epok
+        self.training_history["total_training_time"] = 0.0
+        self.training_history["total_training_time_minutes"] = 0.0
+        self.training_history["avg_epoch_time"] = 0.0
 
         if verbose:
             print(f"\nWŁASNY MLP - Start treningu: {epochs} epok, {X_train.shape[0]} trajektorii na epokę.")
@@ -270,6 +281,8 @@ class OwnSystemMLP:
         epoch_bar = tqdm(range(epochs), desc="Trening Own MLP", unit="epoka")
 
         for epoch in epoch_bar:
+            epoch_start_time = time.time()  # Start pomiaru epoki
+
             train_losses = []
 
             for i in range(X_train.shape[0]):
@@ -291,10 +304,14 @@ class OwnSystemMLP:
             v_pred = self.predict(X_val_eval)
             v_loss = float(self.mse_loss(v_pred, y_val_eval))
 
-            # Zapisujemy postępy
-            self.training_history["train_loss"].append(avg_train_loss)
-            self.training_history["val_loss"].append(v_loss)
+            # Koniec pomiaru epoki
+            epoch_duration = time.time() - epoch_start_time
+
+            # Zapis do historii
+            self.training_history["train_loss"].append(float(avg_train_loss))
+            self.training_history["val_loss"].append(float(v_loss))
             self.training_history["lr"].append(lr)
+            self.training_history["epoch_times"].append(epoch_duration)
             self.training_history["total_epochs"] = epoch + 1
 
             # Early stopping + checkpoint
@@ -329,6 +346,16 @@ class OwnSystemMLP:
                     f"✅ Przywrócono najlepszy model "
                     f"(Val MSE: {best_val_loss:.8f}) z epoki {self.best_epoch_nr + 1}"
                 )
+        # Koniec całego procesu
+        total_duration = time.time() - start_total_time
+        self.training_history["total_training_time"] = total_duration
+        self.training_history["total_training_time_minutes"] = total_duration / 60
+        self.training_history["avg_epoch_time"] = total_duration / self.training_history["total_epochs"]
+        if verbose:
+            print(f"✅ Koniec! Czas całkowity: {self.training_history['total_training_time']:.2f}s - "
+                  f"{self.training_history['total_training_time_minutes']:.2f}min")
+            print(f"✅ Czas średni (na epokę): {self.training_history['avg_epoch_time']:.2f}s - "
+                  f"{self.training_history['avg_epoch_time']/60:.2f}min")
 
     def simulate(self, t, u_new, h0, dh_dt0=None):
         """

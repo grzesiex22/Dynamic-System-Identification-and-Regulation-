@@ -9,7 +9,7 @@ from Utills.Utills import get_unique_signal_indices
 from Dataset.DatasetCreator import DatasetCreator
 from Dataset.DatasetReader import DatasetReader
 
-from ML.SystemMLP import SystemMLP
+from ML.TorchSytsemMLP import TorchSytsemMLP
 from Objects.CoupledTanks import CoupledTanks1
 from Test.Metrics import Metrics, MetricsSummarizer
 from ML.ImplementationOfMLP import OwnSystemMLP
@@ -19,6 +19,7 @@ from ML.KerasSystemMLP import KerasSystemMLP
 # Inicjalizacja colorama (autoreset sprawia, że kolor wraca do normy po każdym princie)
 init(autoreset=True)
 
+
 # -----------------------------
 # 0. Parametry
 # -----------------------------
@@ -27,25 +28,27 @@ dt = 0.5
 amp_range = (3, 15)
 
 # --- generator
-generate = False
-train_dataset_count = 40
-val_dataset_count = 5
-test_dataset_count = 5
-noise_level = 0.01
-dataset_name = "Dataset1"
+GENERATE = False
+train_dataset_count = 1000
+val_dataset_count = 200
+test_dataset_count = 200
+noise_level = 0.05
+dataset_name = "Dataset_test_1"
 
 # --- model - ogólne zmienne ---
-train_and_save = True
-load = False
-epochs = 50
+TRAIN_AND_SAVE = True
+LOAD = False
+TEST = False
+epochs = 500
+patience = 20
 
 # --- Konfiguracja modeli ---
 # Słownik konfiguracji model
 models = [
-    {"obj": SystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Torch_MLP"},
+    {"obj": TorchSytsemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Torch_MLP"},
     {"obj": OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Own_MLP"},
-    {"obj": SklearnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Sklearn_MLP"},
-    {"obj": KerasSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Keras_MLP"},
+    # {"obj": SklearnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Sklearn_MLP"},
+    # {"obj": KerasSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Keras_MLP"},
 ]
 
 # --- wykresy ---
@@ -61,6 +64,7 @@ print(f"\n{Fore.CYAN}{Style.BRIGHT}{'='*30} INICJALIZACJA SYSTEMU {'='*30}")
 tanks = CoupledTanks1(t_end=t_end)
 print(f"{Fore.GREEN}✅ Obiekt {Fore.WHITE}{Style.BRIGHT}{tanks.__class__.__name__}{Fore.GREEN} został pomyślnie zainicjalizowany.")
 
+
 # --------------------------------------------------------------------------------------------------------------------
 # 2. Generator przebiegów
 # --------------------------------------------------------------------------------------------------------------------
@@ -68,7 +72,7 @@ print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{'─'*100}")
 print(f"{Fore.MAGENTA}{Style.BRIGHT}🛠️  MODUŁ GENERACJI DANYCH")
 print(f"{Fore.MAGENTA}{Style.BRIGHT}{'─'*100}")
 
-if generate:
+if GENERATE:
     dataset_creator = DatasetCreator(tanks, t_end=t_end, dt=dt, amp_range=amp_range, noise_level=noise_level)
 
     # Lista konfiguracji do wygenerowania (ułatwia iterację i ładny print)
@@ -170,93 +174,90 @@ for var in available_variants:
     print(Fore.MAGENTA + f"X_val shape: {X_val.shape}, Y_val shape: {Y_val.shape}")
     print(Fore.MAGENTA + f"X_test shape: {X_test.shape}, Y_test shape: {Y_test.shape}")
 
+
 # --------------------------------------------------------------------------------------------------------------------
 # 5. Showcase (Podgląd typów sygnałów: Clean vs Noisy)
 # --------------------------------------------------------------------------------------------------------------------
 print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 30} 5. SHOWCASE DANYCH (INTEGRITY CHECK) {'═' * 15}")
 
-if not generate:
-    try:
-        # Szukamy, czy w ogóle mamy wariant z szumem do porównania
-        noise_variants = [v for v in available_variants if v["noise"] > 0]
+try:
+    # Szukamy, czy w ogóle mamy wariant z szumem do porównania
+    noise_variants = [v for v in available_variants if v["noise"] > 0]
 
-        # Zawsze bierzemy bazę CLEAN
-        clean_name = "CLEAN"
+    # Zawsze bierzemy bazę CLEAN
+    clean_name = "CLEAN"
 
-        if clean_name in loaded_data and noise_variants:
-            v_noise = noise_variants[-1]["noise"]  # Bierzemy największy szum do pokazu
-            noisy_name = f"NOISY_{v_noise}"  # Dostosuj, jeśli Twoje nazwy wariantów są inne
+    if clean_name in loaded_data and noise_variants:
+        v_noise = noise_variants[-1]["noise"]  # Bierzemy największy szum do pokazu
+        noisy_name = f"NOISY_{v_noise}"  # Dostosuj, jeśli Twoje nazwy wariantów są inne
 
-            # Upewniamy się, że szukany wariant jest w słowniku
-            if noisy_name in loaded_data:
-                print(
-                    f"{Fore.YELLOW}🔍 Porównanie typów sygnałów: {Fore.BLUE}CLEAN {Fore.YELLOW}vs {Fore.RED}{noisy_name}")
+        # Upewniamy się, że szukany wariant jest w słowniku
+        if noisy_name in loaded_data:
+            print(
+                f"{Fore.YELLOW}🔍 Porównanie typów sygnałów: {Fore.BLUE}CLEAN {Fore.YELLOW}vs {Fore.RED}{noisy_name}")
 
-                # Wykorzystujemy Twoją funkcję do znalezienia indeksów (aprbs, multisine, noise)
-                target_indices = get_unique_signal_indices(dataset_name, mode="test", noise_level=0.0)
+            # Wykorzystujemy Twoją funkcję do znalezienia indeksów (aprbs, multisine, noise)
+            target_indices = get_unique_signal_indices(dataset_name, mode="test", noise_level=0.0)
 
-                clean_test_obs = loaded_data[clean_name]["test_obs"]
-                noisy_test_obs = loaded_data[noisy_name]["test_obs"]
+            clean_test_obs = loaded_data[clean_name]["test_obs"]
+            noisy_test_obs = loaded_data[noisy_name]["test_obs"]
 
-                for sig_type, idx in target_indices.items():
-                    print(f"  {Fore.GREEN}└─ Generowanie podglądu dla: {Style.BRIGHT}{sig_type.upper()} (index: {idx})")
+            for sig_type, idx in target_indices.items():
+                print(f"  {Fore.GREEN}└─ Generowanie podglądu dla: {Style.BRIGHT}{sig_type.upper()} (index: {idx})")
 
-                    c_obj = clean_test_obs[idx]
-                    n_obj = noisy_test_obs[idx]
+                c_obj = clean_test_obs[idx]
+                n_obj = noisy_test_obs[idx]
 
-                    t_plot, u_plot, h_clean, dh_dt_clean = c_obj.get_data_to_plot()
-                    _, _, h_noisy, dh_dt_noisy = n_obj.get_data_to_plot()
+                t_plot, u_plot, h_clean, dh_dt_clean = c_obj.get_data_to_plot()
+                _, _, h_noisy, dh_dt_noisy = n_obj.get_data_to_plot()
 
-                    v_noise_str = str(noisy_name).replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+                v_noise_str = str(noisy_name).replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
 
-                    SystemPlotter.plot_noise_comparison(
-                        t=t_plot,
-                        u=u_plot,
-                        y_true=h_clean,
-                        dy_dt_true=dh_dt_clean,
-                        y_noise=h_noisy,  # Bezpośrednio macierz
-                        dy_dt_noise=dh_dt_noisy,  # Bezpośrednio macierz
-                        noise_label=f"Zaszumione (std={v_noise})",
-                        title=f"Showcase | Typ: {sig_type.upper()} | Clean vs {noisy_name}",
-                        save_name=f"Showcase_t{idx}_{v_noise_str}_U_{sig_type.upper()}",
-                        dataset=dataset_name,
-                        show=show_showcase_plot
-                    )
-
+                SystemPlotter.plot_noise_comparison(
+                    t=t_plot,
+                    u=u_plot,
+                    y_true=h_clean,
+                    dy_dt_true=dh_dt_clean,
+                    y_noise=h_noisy,  # Bezpośrednio macierz
+                    dy_dt_noise=dh_dt_noisy,  # Bezpośrednio macierz
+                    noise_label=f"Zaszumione (std={v_noise})",
+                    title=f"Showcase | Typ: {sig_type.upper()} | Clean vs {noisy_name}",
+                    save_name=f"Showcase_t{idx}_{v_noise_str}_U_{sig_type.upper()}",
+                    dataset=dataset_name,
+                    show=show_showcase_plot
+                )
+            if show_showcase_plot:
                 print(f"{Fore.CYAN}📺 Zamknij wykresy, aby rozpocząć proces uczenia/testowania.")
                 plt.show(block=True)
-            else:
-                print(f"{Fore.BLUE}ℹ️  Wariant {noisy_name} nie został załadowany. Pomijam showcase.")
         else:
-            print(f"{Fore.BLUE}ℹ️  Brak danych CLEAN lub NOISY do wykonania porównania.")
+            print(f"{Fore.BLUE}ℹ️  Wariant {noisy_name} nie został załadowany. Pomijam showcase.")
+    else:
+        print(f"{Fore.BLUE}ℹ️  Brak danych CLEAN lub NOISY do wykonania porównania.")
 
-    except Exception as e:
-        print(f"{Fore.RED}⚠️ Błąd podczas weryfikacji Showcase: {Fore.WHITE}{e}")
-        import traceback
+except Exception as e:
+    print(f"{Fore.RED}⚠️ Błąd podczas weryfikacji Showcase: {Fore.WHITE}{e}")
+    import traceback
 
-        traceback.print_exc()
+    traceback.print_exc()
+
 
 # --------------------------------------------------------------------------------------------------------------------
-# Weryfikacja flag logicznych
+# 6. Pętla Główna (Trening/Wczytanie)
 # --------------------------------------------------------------------------------------------------------------------
-if train_and_save and load:
+print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 30} 6. TRENING/WCZYTANIE MODELI {'═' * 19}")
+
+# --- Weryfikacja flag logicznych ---
+if TRAIN_AND_SAVE and LOAD:
     print(f"\n{Fore.RED}{Style.BRIGHT}❌ KRYTYCZNY BŁĄD KONFIGURACJI:")
-    print(f"{Fore.RED}Zmienne 'train_and_save' oraz 'load' nie mogą być obie ustawione na True!")
+    print(f"{Fore.RED}Zmienne 'TRAIN_AND_SAVE' oraz 'LOAD' nie mogą być obie ustawione na True!")
     print(f"{Fore.YELLOW}Zdecyduj czy chcesz trenować nowe modele, czy wczytać już istniejące.{Style.RESET_ALL}")
     sys.exit(1)
 
-if not train_and_save and not load:
+if not TRAIN_AND_SAVE and not LOAD:
     print(f"\n{Fore.BLUE}{Style.BRIGHT}ℹ️  INFORMACJA:")
-    print(f"{Fore.BLUE}Obie flagi ('train_and_save', 'load') są ustawione na False.")
+    print(f"{Fore.BLUE}Obie flagi ('TRAIN_AND_SAVE', 'LOAD') są ustawione na False.")
     print(f"{Fore.BLUE}Program nie ma zadań do wykonania (brak treningu i brak wczytywania). Koniec.{Style.RESET_ALL}")
     sys.exit(0)
-
-# --------------------------------------------------------------------------------------------------------------------
-# 6. Pętla Główna (Trening i Testowanie)
-# --------------------------------------------------------------------------------------------------------------------
-print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 30} 6. TRENING I WERYFIKACJA MODELI {'═' * 19}")
-
-global_summarizer = MetricsSummarizer()
 
 # Iterujemy po wczytanych wcześniej danych
 for v_name, data in loaded_data.items():
@@ -267,7 +268,9 @@ for v_name, data in loaded_data.items():
 
     # Wymiary z pamięci (tylko do logów)
     print(
-        Fore.MAGENTA + f"📊 Dane: Train={data['X_train'].shape}, Val={data['X_val'].shape}, Test={data['X_test'].shape}")
+        Fore.MAGENTA + f"📊 Dane X: Train={data['X_train'].shape}, Val={data['X_val'].shape}, Test={data['X_test'].shape}")
+    print(
+        Fore.MAGENTA + f"📊 Dane Y: Train={data['Y_train'].shape}, Val={data['Y_val'].shape}, Test={data['Y_test'].shape}")
 
     # --- Uczenie / wczytanie modeli ---
     for m in models:
@@ -277,15 +280,16 @@ for v_name, data in loaded_data.items():
         print(f"\n{Fore.WHITE + Back.BLUE + Style.BRIGHT} 🧠 MODEL: {model_name} ")
         save_id = f"{dataset_name}_{v_name}_{model_name}"
 
-        if load:
+        if LOAD:
             print(Fore.CYAN + "  📥 Wczytywanie wag...", end=" ", flush=True)
-            model_obj.load_model(base_name=save_id)
+            model_obj.load_model(dataset=dataset_name, base_name=save_id)
             print(Fore.GREEN + "Sukces")
 
-        if train_and_save:
+        if TRAIN_AND_SAVE:
             print(Fore.YELLOW + "  🏗️  Rozpoczynam proces treningu...")
-            model_obj.train(data["X_train"], data["Y_train"], data["X_val"], data["Y_val"], epochs=epochs)
-            model_obj.save_model(base_name=save_id)
+            model_obj.train(data["X_train"], data["Y_train"], data["X_val"], data["Y_val"],
+                            epochs=epochs, patience=patience)
+            model_obj.save_model(dataset=dataset_name, base_name=save_id)
             print(Fore.GREEN + f"  💾 Zapisano model: {save_id}")
 
         # --- Rysowanie krzywej uczenia ---
@@ -301,31 +305,55 @@ for v_name, data in loaded_data.items():
             show=show_learning_plot
         )
 
-    # --- Testowanie modeli ---
-    print(f"\n{Fore.YELLOW}🧪 Rozpoczynam testy dla {v_name}...")
-    # Przekazuje całą listę trajektorii testowych-
-    tester = Tester(data["test_obs"])
-    # Przygotowujemy listę modeli z unikalnymi nazwami dla tego wariantu
-    models_to_run = []
-    for m in models:
-        # Dodajemy informację o wariancie do nazwy w tabeli raportu
-        models_to_run.append({
-            "obj": m["obj"],
-            "name": f"{m['name']}_{v_name}"
-        })
-
-    tester.run(models_to_run, global_summarizer)
 
 # --------------------------------------------------------------------------------------------------------------------
-# 7. RAPORT
+# 7. Pętla Główna (Testowanie)
+# --------------------------------------------------------------------------------------------------------------------
+print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 30} 7. TESTOWANIE MODELI {'═' * 19}")
+
+global_summarizer = MetricsSummarizer()
+
+if TEST:
+    # Iterujemy po wczytanych wcześniej danych
+    for v_name, data in loaded_data.items():
+        print("\n" + Fore.BLUE + Style.BRIGHT + "═" * 80)
+        print(Fore.BLUE + Style.BRIGHT + f" 🚀 WARIANT: {v_name.center(66)} 🚀")
+        print(Fore.BLUE + Style.BRIGHT + "═" * 80)
+
+        # Wymiary z pamięci (tylko do logów)
+        print(
+            Fore.MAGENTA + f"📊 Dane: Train={data['X_train'].shape}, Val={data['X_val'].shape}, Test={data['X_test'].shape}")
+
+        # Przekazuje całą listę trajektorii testowych-
+        tester = Tester(data["test_obs"])
+        # Przygotowujemy listę modeli z unikalnymi nazwami dla tego wariantu
+        models_to_run = []
+
+        print(f"\n{Fore.YELLOW}🧪 Rozpoczynam testy dla {v_name}...")
+        for m in models:
+            # Dodajemy informację o wariancie do nazwy w tabeli raportu
+            models_to_run.append({
+                "obj": m["obj"],
+                "name": f"{m['name']}_{v_name}"
+            })
+
+        tester.run(models_to_run, global_summarizer)
+else:
+    print(f"{Fore.YELLOW}Flaga TEST = {TEST} - kończę program{Style.RESET_ALL}")
+    sys.exit(2)
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# 8. RAPORT
 # --------------------------------------------------------------------------------------------------------------------
 # global_summarizer.show_all()
 global_summarizer.show_averages()
 global_summarizer.save_all_to_file(dataset=dataset_name)  # Zapis do pliku
 global_summarizer.save_averages_to_file(dataset=dataset_name)
 
+
 # --------------------------------------------------------------------------------------------------------------------
-# 8. WYKRESY
+# 9. WYKRESY
 # --------------------------------------------------------------------------------------------------------------------
 print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{'═' * 80}")
 print(f"{Fore.MAGENTA}{Style.BRIGHT}📈 GENEROWANIE WYKRESÓW PORÓWNAWCZYCH DLA TYPÓW SYGNAŁÓW")
