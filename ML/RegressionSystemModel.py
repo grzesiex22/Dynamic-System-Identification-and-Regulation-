@@ -11,11 +11,6 @@ class RegressionSystemModel:
     Model regresyjny typu Ridge do identyfikacji dynamiki systemów nieliniowych.
     Model przewiduje pochodne stanów:
         dy/dt = f(u(k), y(k-1), dy/dt(k-1))
-
-    Wersja baseline:
-    - bardzo szybki trening,
-    - bardzo szybka inferencja,
-    - prosty punkt odniesienia dla MLP i LSTM.
     """
 
     def __init__(self, input_dim=5, output_dim=2, alpha=1.0, seed=42):
