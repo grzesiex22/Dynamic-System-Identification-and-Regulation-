@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+import time
 
 import numpy as np
 from sklearn.linear_model import Ridge
@@ -29,8 +30,12 @@ class RegressionSystemModel:
             "train_loss": [],
             "val_loss": [],
             "lr": [],
+            "epoch_times": [],
             "best_epoch": 1,
-            "total_epochs": 1
+            "total_epochs": 1,
+            "total_training_time": 0.0,
+            "total_training_time_minutes": 0.0,
+            "avg_epoch_time": 0.0
         }
 
     @staticmethod
@@ -56,6 +61,9 @@ class RegressionSystemModel:
         Trening baseline'u regresyjnego.
         Parametry lr / epochs / patience zostawione tylko dla zgodności interfejsu.
         """
+
+        start_total_time = time.time()
+
         if X_train.ndim == 3:
             X_train_fit = X_train.reshape(-1, X_train.shape[-1]).astype(np.float32)
             y_train_fit = y_train.reshape(-1, y_train.shape[-1]).astype(np.float32)
@@ -73,14 +81,20 @@ class RegressionSystemModel:
         self.training_config = {
             "alpha": self.alpha,
             "samples_train": int(X_train_fit.shape[0]),
+            "samples_val": int(X_val_eval.shape[0]),
             "optimizer": "closed_form/solver_internal",
-            "model_type": "RidgeRegression"
+            "model_type": "RidgeRegression",
+            "lr_ignored": lr,
+            "epochs_ignored": epochs,
+            "patience_ignored": patience
         }
 
         if verbose:
             print(f"\nRIDGE REGRESSOR - Start treningu na {X_train_fit.shape[0]} próbkach.")
 
+        fit_start_time = time.time()
         self.model.fit(X_train_fit, y_train_fit)
+        fit_duration = time.time() - fit_start_time
 
         train_pred = self.model.predict(X_train_fit)
         val_pred = self.model.predict(X_val_eval)
@@ -88,14 +102,24 @@ class RegressionSystemModel:
         train_loss = self.mse_loss(train_pred, y_train_fit)
         val_loss = self.mse_loss(val_pred, y_val_eval)
 
-        self.training_history["train_loss"] = [train_loss]
-        self.training_history["val_loss"] = [val_loss]
-        self.training_history["lr"] = [0.0]
-        self.training_history["best_epoch"] = 1
-        self.training_history["total_epochs"] = 1
+        total_duration = time.time() - start_total_time
+
+        self.training_history = {
+            "train_loss": [train_loss],
+            "val_loss": [val_loss],
+            "lr": [0.0],
+            "epoch_times": [fit_duration],
+            "best_epoch": 1,
+            "total_epochs": 1,
+            "total_training_time": total_duration,
+            "total_training_time_minutes": total_duration / 60.0,
+            "avg_epoch_time": fit_duration
+        }
 
         if verbose:
             print(f"✅ Trening zakończony | Train MSE: {train_loss:.8f} | Val MSE: {val_loss:.8f}")
+            print(f"✅ Czas treningu: {total_duration:.2f}s - {total_duration / 60.0:.2f}min")
+            print(f"✅ Czas fit(): {fit_duration:.2f}s")
 
     def simulate(self, t, u_new, h0, dh_dt0=None):
         """

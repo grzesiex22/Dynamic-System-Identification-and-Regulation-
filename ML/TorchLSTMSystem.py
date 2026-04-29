@@ -1,6 +1,7 @@
 import json
 import os
 import copy
+import time
 
 import numpy as np
 import torch
@@ -13,18 +14,12 @@ from tqdm import tqdm
 class LSTMRegressor(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers=1):
         super().__init__()
-        self.lstm = nn.LSTM(
-            input_size=input_dim,
-            hidden_size=hidden_dim,
-            num_layers=num_layers,
-            batch_first=True
-        )
+        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers=num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
         out, _ = self.lstm(x)
-        last_out = out[:, -1, :]
-        return self.fc(last_out)
+        return self.fc(out[:, -1, :])
 
 
 class TorchLSTMSystem:
@@ -58,8 +53,12 @@ class TorchLSTMSystem:
             "train_loss": [],
             "val_loss": [],
             "lr": [],
+            "epoch_times": [],
             "best_epoch": 0,
-            "total_epochs": 0
+            "total_epochs": 0,
+            "total_training_time": 0.0,
+            "total_training_time_minutes": 0.0,
+            "avg_epoch_time": 0.0
         }
 
     @staticmethod
@@ -96,6 +95,8 @@ class TorchLSTMSystem:
     def train(self, X_train, y_train, X_val, y_val, lr=0.001, epochs=100, patience=10, batch_size=512):
         print(f"\nTORCH LSTM - Start treningu: {epochs} epok, seq_len={self.seq_len}, device={self.device}")
 
+        start_total_time = time.time()
+
         X_train_seq, y_train_seq = self._create_sequences(X_train, y_train, self.seq_len)
         X_val_seq, y_val_seq = self._create_sequences(X_val, y_val, self.seq_len)
 
@@ -114,6 +115,18 @@ class TorchLSTMSystem:
             "num_layers": self.num_layers,
             "optimizer": "Adam",
             "device": str(self.device)
+        }
+
+        self.training_history = {
+            "train_loss": [],
+            "val_loss": [],
+            "lr": [],
+            "epoch_times": [],
+            "best_epoch": 0,
+            "total_epochs": 0,
+            "total_training_time": 0.0,
+            "total_training_time_minutes": 0.0,
+            "avg_epoch_time": 0.0
         }
 
         train_dataset = TensorDataset(
@@ -139,17 +152,11 @@ class TorchLSTMSystem:
         epochs_no_improve = 0
         self.best_model_state = None
 
-        self.training_history = {
-            "train_loss": [],
-            "val_loss": [],
-            "lr": [],
-            "best_epoch": 0,
-            "total_epochs": 0
-        }
-
         epoch_bar = tqdm(range(epochs), desc="Trening LSTM", unit="epoka")
 
         for epoch in epoch_bar:
+            epoch_start_time = time.time()
+
             self.model.train()
             train_losses = []
 
@@ -172,9 +179,12 @@ class TorchLSTMSystem:
                 v_pred = self.model(X_val_t)
                 v_loss = float(criterion(v_pred, y_val_t).item())
 
+            epoch_duration = time.time() - epoch_start_time
+
             self.training_history["train_loss"].append(avg_train_loss)
             self.training_history["val_loss"].append(v_loss)
             self.training_history["lr"].append(lr)
+            self.training_history["epoch_times"].append(epoch_duration)
             self.training_history["total_epochs"] = epoch + 1
 
             if v_loss < best_val_loss:
@@ -188,7 +198,8 @@ class TorchLSTMSystem:
             epoch_bar.set_postfix({
                 "T_Loss": f"{avg_train_loss:.8f}",
                 "V_Loss": f"{v_loss:.8f}",
-                "Patience": f"{epochs_no_improve}/{patience}"
+                "Patience": f"{epochs_no_improve}/{patience}",
+                "Time": f"{epoch_duration:.2f}s"
             })
 
             if epochs_no_improve >= patience:
@@ -198,6 +209,20 @@ class TorchLSTMSystem:
         if self.best_model_state is not None:
             self.model.load_state_dict(self.best_model_state)
             print(f"✅ Przywrócono najlepszy model z epoki {self.training_history['best_epoch']}")
+
+        total_duration = time.time() - start_total_time
+        self.training_history["total_training_time"] = total_duration
+        self.training_history["total_training_time_minutes"] = total_duration / 60.0
+
+        if self.training_history["total_epochs"] > 0:
+            self.training_history["avg_epoch_time"] = total_duration / self.training_history["total_epochs"]
+        else:
+            self.training_history["avg_epoch_time"] = 0.0
+
+        print(f"✅ Koniec! Czas całkowity: {self.training_history['total_training_time']:.2f}s - "
+              f"{self.training_history['total_training_time_minutes']:.2f}min")
+        print(f"✅ Czas średni (na epokę): {self.training_history['avg_epoch_time']:.2f}s - "
+              f"{self.training_history['avg_epoch_time'] / 60:.2f}min")
 
     def simulate(self, t, u_new, h0, dh_dt0=None):
         n_points = len(t)

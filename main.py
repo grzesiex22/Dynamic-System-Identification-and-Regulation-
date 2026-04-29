@@ -38,8 +38,8 @@ noise_level = 0.05
 dataset_name = "Dataset_test_1"
 
 # --- model - ogólne zmienne ---
-TRAIN_AND_SAVE = False
-LOAD = True
+TRAIN_AND_SAVE = True
+LOAD = False
 TEST = True
 epochs = 500
 patience = 20

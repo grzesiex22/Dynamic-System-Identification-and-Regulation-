@@ -8,8 +8,12 @@
     "training_config": {
         "alpha": 1.0,
         "samples_train": 1998000,
+        "samples_val": 399600,
         "optimizer": "closed_form/solver_internal",
-        "model_type": "RidgeRegression"
+        "model_type": "RidgeRegression",
+        "lr_ignored": 0.001,
+        "epochs_ignored": 500,
+        "patience_ignored": 20
     },
     "training_history": {
         "train_loss": [
@@ -21,7 +25,13 @@
         "lr": [
             0.0
         ],
+        "epoch_times": [
+            0.12928032875061035
+        ],
         "best_epoch": 1,
-        "total_epochs": 1
+        "total_epochs": 1,
+        "total_training_time": 0.20377731323242188,
+        "total_training_time_minutes": 0.003396288553873698,
+        "avg_epoch_time": 0.12928032875061035
     }
 }
