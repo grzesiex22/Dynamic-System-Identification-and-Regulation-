@@ -1,0 +1,107 @@
+{
+    "metadata": {
+        "date": "2026-04-25 12:09:04",
+        "filename": "train_dataset_10.npz",
+        "system_object": "CoupledTanks1",
+        "dt": 0.5,
+        "t_end": 1000,
+        "amp_tange": [
+            3,
+            15
+        ],
+        "noise_level": 0.05
+    },
+    "dataset_structure": {
+        "total_trajectories": 10,
+        "points_per_trajectory": {
+            "raw_u_y": 2000,
+            "derivative_dydt": 1999
+        },
+        "dimensions": {
+            "u_control_dim": 1,
+            "y_state_dim": 2,
+            "dydt_dim": 2
+        }
+    },
+    "statistics": {
+        "aprbs": 4,
+        "multisine": 2,
+        "noise": 4
+    },
+    "signals_config": {
+        "aprbs": {
+            "h_min_range": [
+                50,
+                150
+            ],
+            "h_add_range": [
+                100,
+                300
+            ]
+        },
+        "multisine": {
+            "n_freqs_range": [
+                5,
+                15
+            ],
+            "f_max_range": [
+                0.005,
+                0.02
+            ]
+        },
+        "noise": {
+            "cutoff_range": [
+                0.001,
+                0.01
+            ]
+        }
+    },
+    "run_history": [
+        {
+            "type": "aprbs",
+            "h_min": 61,
+            "h_max": 179
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.002189129268147366
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.0020887264777567052
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 11,
+            "f_max": 0.01575705331226116
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.006623395820520176
+        },
+        {
+            "type": "multisine",
+            "n_freqs": 9,
+            "f_max": 0.007509293396410942
+        },
+        {
+            "type": "aprbs",
+            "h_min": 143,
+            "h_max": 349
+        },
+        {
+            "type": "aprbs",
+            "h_min": 141,
+            "h_max": 308
+        },
+        {
+            "type": "noise",
+            "cutoff": 0.0058148333850966995
+        },
+        {
+            "type": "aprbs",
+            "h_min": 105,
+            "h_max": 277
+        }
+    ]
+}
