@@ -6,15 +6,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
 from tqdm import tqdm
 
 
 class LSTMRegressor(nn.Module):
-    """
-    Prosty model LSTM:
-    wejście:  [batch, seq_len, input_dim]
-    wyjście:  [batch, output_dim]  -> predykcja dla ostatniego kroku sekwencji
-    """
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers=1):
         super().__init__()
         self.lstm = nn.LSTM(
@@ -28,21 +24,10 @@ class LSTMRegressor(nn.Module):
     def forward(self, x):
         out, _ = self.lstm(x)
         last_out = out[:, -1, :]
-        y = self.fc(last_out)
-        return y
+        return self.fc(last_out)
 
 
 class TorchLSTMSystem:
-    """
-    Model LSTM do identyfikacji dynamiki systemów nieliniowych.
-    Model przewiduje pochodne stanów:
-        dy/dt(k) = f( sekwencja [u, y, dy/dt] z ostatnich kroków )
-
-    Uwaga:
-    - do treningu budowane są okna sekwencyjne długości seq_len,
-    - do symulacji model utrzymuje bufor ostatnich wejść.
-    """
-
     def __init__(self, input_dim=5, hidden_dim=64, output_dim=2, seq_len=10, num_layers=1, seed=42):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -54,12 +39,15 @@ class TorchLSTMSystem:
         torch.manual_seed(seed)
         np.random.seed(seed)
 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"🔧 TorchLSTMSystem używa urządzenia: {self.device}")
+
         self.model = LSTMRegressor(
             input_dim=input_dim,
             hidden_dim=hidden_dim,
             output_dim=output_dim,
             num_layers=num_layers
-        )
+        ).to(self.device)
 
         self.CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
         self.BASE_DIR = os.path.join(self.CURRENT_DIR)
@@ -76,14 +64,6 @@ class TorchLSTMSystem:
 
     @staticmethod
     def _create_sequences(X, Y, seq_len):
-        """
-        X: [n_traj, T, input_dim]
-        Y: [n_traj, T, output_dim]
-
-        Zwraca:
-        X_seq: [n_samples, seq_len, input_dim]
-        Y_seq: [n_samples, output_dim]
-        """
         X_seq = []
         Y_seq = []
 
@@ -107,56 +87,65 @@ class TorchLSTMSystem:
         return np.asarray(X_seq, dtype=np.float32), np.asarray(Y_seq, dtype=np.float32)
 
     def predict(self, X_seq):
-        """
-        X_seq: [batch, seq_len, input_dim]
-        """
         self.model.eval()
         with torch.no_grad():
-            x_t = torch.tensor(X_seq, dtype=torch.float32)
+            x_t = torch.tensor(X_seq, dtype=torch.float32).to(self.device)
             y = self.model(x_t).cpu().numpy()
         return y
 
-    def train(self, X_train, y_train, X_val, y_val, lr=0.001, epochs=100, patience=10):
-        """
-        Trening LSTM na oknach sekwencyjnych zbudowanych z trajektorii.
-        """
-        print(f"\nTORCH LSTM - Start treningu: {epochs} epok, seq_len={self.seq_len}")
+    def train(self, X_train, y_train, X_val, y_val, lr=0.001, epochs=100, patience=10, batch_size=512):
+        print(f"\nTORCH LSTM - Start treningu: {epochs} epok, seq_len={self.seq_len}, device={self.device}")
 
         X_train_seq, y_train_seq = self._create_sequences(X_train, y_train, self.seq_len)
         X_val_seq, y_val_seq = self._create_sequences(X_val, y_val, self.seq_len)
 
         if len(X_train_seq) == 0 or len(X_val_seq) == 0:
-            raise ValueError(
-                f"Brak wystarczająco długich trajektorii dla seq_len={self.seq_len}. "
-                f"Minimalna długość trajektorii musi być > seq_len."
-            )
+            raise ValueError(f"Brak wystarczająco długich trajektorii dla seq_len={self.seq_len}.")
 
         self.training_config = {
             "lr": lr,
             "max_epochs": epochs,
             "patience": patience,
+            "batch_size": batch_size,
             "hidden_dim": self.hidden_dim,
             "input_dim": self.input_dim,
             "output_dim": self.output_dim,
             "seq_len": self.seq_len,
             "num_layers": self.num_layers,
-            "optimizer": "Adam"
+            "optimizer": "Adam",
+            "device": str(self.device)
         }
 
-        self.training_history["train_loss"] = []
-        self.training_history["val_loss"] = []
-        self.training_history["lr"] = []
-        self.training_history["best_epoch"] = 0
-        self.training_history["total_epochs"] = 0
+        train_dataset = TensorDataset(
+            torch.tensor(X_train_seq, dtype=torch.float32),
+            torch.tensor(y_train_seq, dtype=torch.float32)
+        )
+
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=0,
+            pin_memory=(self.device.type == "cuda")
+        )
+
+        X_val_t = torch.tensor(X_val_seq, dtype=torch.float32).to(self.device)
+        y_val_t = torch.tensor(y_val_seq, dtype=torch.float32).to(self.device)
 
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
         criterion = nn.MSELoss()
 
-        X_val_t = torch.tensor(X_val_seq, dtype=torch.float32)
-        y_val_t = torch.tensor(y_val_seq, dtype=torch.float32)
-
         best_val_loss = float("inf")
         epochs_no_improve = 0
+        self.best_model_state = None
+
+        self.training_history = {
+            "train_loss": [],
+            "val_loss": [],
+            "lr": [],
+            "best_epoch": 0,
+            "total_epochs": 0
+        }
 
         epoch_bar = tqdm(range(epochs), desc="Trening LSTM", unit="epoka")
 
@@ -164,13 +153,13 @@ class TorchLSTMSystem:
             self.model.train()
             train_losses = []
 
-            for i in range(X_train_seq.shape[0]):
-                x_sample = torch.tensor(X_train_seq[i:i+1], dtype=torch.float32)
-                y_sample = torch.tensor(y_train_seq[i:i+1], dtype=torch.float32)
+            for xb, yb in train_loader:
+                xb = xb.to(self.device, non_blocking=True)
+                yb = yb.to(self.device, non_blocking=True)
 
                 optimizer.zero_grad()
-                y_pred = self.model(x_sample)
-                loss = criterion(y_pred, y_sample)
+                y_pred = self.model(xb)
+                loss = criterion(y_pred, yb)
                 loss.backward()
                 optimizer.step()
 
@@ -203,23 +192,14 @@ class TorchLSTMSystem:
             })
 
             if epochs_no_improve >= patience:
-                print(f"🛑 Early Stopping! Brak poprawy przez {patience} epok. Aktualna epoka: {epoch}")
+                print(f"🛑 Early Stopping! Brak poprawy przez {patience} epok.")
                 break
 
         if self.best_model_state is not None:
             self.model.load_state_dict(self.best_model_state)
-            best_epoch = self.training_history["best_epoch"]
-            print(f"✅ Przywrócono najlepszy model (Val MSE: {best_val_loss:.8f}) z epoki {best_epoch}")
+            print(f"✅ Przywrócono najlepszy model z epoki {self.training_history['best_epoch']}")
 
     def simulate(self, t, u_new, h0, dh_dt0=None):
-        """
-        Symulacja rekurencyjna LSTM.
-
-        Bufor wejściowy ma długość seq_len i na każdym kroku zawiera wektory:
-            [u(k), y(k-1), dy/dt(k-1)]
-
-        Na początku bufor jest wypełniany powtarzanym wektorem startowym.
-        """
         n_points = len(t)
         dt = t[1] - t[0]
 
@@ -258,11 +238,14 @@ class TorchLSTMSystem:
                 buffer[:-1] = buffer[1:]
                 buffer[-1] = current_feature
 
-                x_seq = torch.tensor(buffer[np.newaxis, :, :], dtype=torch.float32)
+                x_seq = torch.tensor(
+                    buffer[np.newaxis, :, :],
+                    dtype=torch.float32
+                ).to(self.device)
+
                 dh_dt_curr = self.model(x_seq).cpu().numpy().flatten().astype(np.float32)
 
                 dh_dt_sim[i] = dh_dt_curr
-
                 h_sim[i] = h_sim[i - 1] + dh_dt_curr * dt
                 h_sim[i] = np.maximum(h_sim[i], 0.0)
 
@@ -321,9 +304,11 @@ class TorchLSTMSystem:
                 hidden_dim=self.hidden_dim,
                 output_dim=self.output_dim,
                 num_layers=self.num_layers
-            )
+            ).to(self.device)
 
-            self.model.load_state_dict(torch.load(model_path, map_location="cpu", weights_only=True))
+            self.model.load_state_dict(
+                torch.load(model_path, map_location=self.device, weights_only=True)
+            )
             self.model.eval()
 
             print(f"📖 Model {base_name} wczytany z folderu {dataset}.")

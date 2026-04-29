@@ -1,0 +1,27 @@
+{
+    "model_arch": {
+        "input_dim": 5,
+        "output_dim": 2,
+        "alpha": 1.0,
+        "seed": 42
+    },
+    "training_config": {
+        "alpha": 1.0,
+        "samples_train": 1998000,
+        "optimizer": "closed_form/solver_internal",
+        "model_type": "RidgeRegression"
+    },
+    "training_history": {
+        "train_loss": [
+            1.618671558389906e-05
+        ],
+        "val_loss": [
+            1.655220694374293e-05
+        ],
+        "lr": [
+            0.0
+        ],
+        "best_epoch": 1,
+        "total_epochs": 1
+    }
+}

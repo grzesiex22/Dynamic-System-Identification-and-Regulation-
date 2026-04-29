@@ -15,6 +15,8 @@ from Test.Metrics import Metrics, MetricsSummarizer
 from ML.ImplementationOfMLP import OwnSystemMLP
 from ML.SklearnSystemMLP import SklearnSystemMLP
 from ML.KerasSystemMLP import KerasSystemMLP
+from ML.TorchLSTMSystem import TorchLSTMSystem
+from ML.RegressionSystemModel import RegressionSystemModel
 
 # Inicjalizacja colorama (autoreset sprawia, że kolor wraca do normy po każdym princie)
 init(autoreset=True)
@@ -45,10 +47,13 @@ patience = 20
 # --- Konfiguracja modeli ---
 # Słownik konfiguracji model
 models = [
-    {"obj": TorchSytsemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Torch_MLP"},
-    {"obj": OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Own_MLP"},
+    # {"obj": TorchSytsemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Torch_MLP"},
+    # {"obj": OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Own_MLP"},
     # {"obj": SklearnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Sklearn_MLP"},
     # {"obj": KerasSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Keras_MLP"},
+    {"obj": TorchLSTMSystem(input_dim=5, hidden_dim=64, output_dim=2, seq_len=10, num_layers=1), "name": "Torch_LSTM"},
+    {"obj": RegressionSystemModel(input_dim=5, output_dim=2, alpha=1.0), "name": "Ridge_Regression"},
+
 ]
 
 # --- wykresy ---
