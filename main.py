@@ -38,17 +38,17 @@ noise_level = 0.05
 dataset_name = "Dataset_test_1"
 
 # --- model - ogólne zmienne ---
-TRAIN_AND_SAVE = True
-LOAD = False
-TEST = True
+TRAIN_AND_SAVE = False
+LOAD = True
+TEST = False
 epochs = 500
 patience = 20
 
 # --- Konfiguracja modeli ---
 # Słownik konfiguracji model
 models = [
-    # {"obj": TorchSytsemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Torch_MLP"},
-    # {"obj": OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Own_MLP"},
+    {"obj": TorchSytsemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Torch_MLP"},
+    {"obj": OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Own_MLP"},
     # {"obj": SklearnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Sklearn_MLP"},
     # {"obj": KerasSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Keras_MLP"},
     {"obj": TorchLSTMSystem(input_dim=5, hidden_dim=64, output_dim=2, seq_len=10, num_layers=1), "name": "Torch_LSTM"},
@@ -58,7 +58,7 @@ models = [
 
 # --- wykresy ---
 show_showcase_plot = False
-show_learning_plot = True
+show_learning_plot = False
 show_testing_plot = True
 
 
@@ -351,10 +351,11 @@ else:
 # --------------------------------------------------------------------------------------------------------------------
 # 8. RAPORT
 # --------------------------------------------------------------------------------------------------------------------
-# global_summarizer.show_all()
-global_summarizer.show_averages()
-global_summarizer.save_all_to_file(dataset=dataset_name)  # Zapis do pliku
-global_summarizer.save_averages_to_file(dataset=dataset_name)
+if TEST:
+    # global_summarizer.show_all()
+    global_summarizer.show_averages()
+    global_summarizer.save_all_to_file(dataset=dataset_name)  # Zapis do pliku
+    global_summarizer.save_averages_to_file(dataset=dataset_name)
 
 
 # --------------------------------------------------------------------------------------------------------------------
