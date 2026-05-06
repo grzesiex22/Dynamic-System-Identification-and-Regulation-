@@ -9,47 +9,62 @@ class Metrics:
     def mse(y_true, y_pred):
         y_true = np.asarray(y_true)
         y_pred = np.asarray(y_pred)
-        return float(np.mean((y_true - y_pred) ** 2))
+        # axis=0 sprawia, że liczymy średnią po wierszach, zostają 2 kolumny
+        return np.mean((y_true - y_pred) ** 2, axis=0)
 
     @staticmethod
     def rmse(y_true, y_pred):
-        return float(np.sqrt(Metrics.mse(y_true, y_pred)))
+        return np.sqrt(Metrics.mse(y_true, y_pred))
 
     @staticmethod
     def mae(y_true, y_pred):
         y_true = np.asarray(y_true)
         y_pred = np.asarray(y_pred)
-        return float(np.mean(np.abs(y_true - y_pred)))
+        return np.mean(np.abs(y_true - y_pred), axis=0)
 
     @staticmethod
     def max_error(y_true, y_pred):
-        """Oblicza największy błąd bezwzględny (błąd amplitudy)."""
         y_true = np.asarray(y_true)
         y_pred = np.asarray(y_pred)
-        # Obliczamy maksimum z wartości bezwzględnych różnic
-        return float(np.max(np.abs(y_true - y_pred)))
+        return np.max(np.abs(y_true - y_pred), axis=0)
 
     @staticmethod
     def r2(y_true, y_pred):
-        y_true = np.asarray(y_true)
-        y_pred = np.asarray(y_pred)
+        # y_true = np.asarray(y_true)
+        # y_pred = np.asarray(y_pred)
 
-        ss_res = np.sum((y_true - y_pred) ** 2)
-        ss_tot = np.sum((y_true - np.mean(y_true, axis=0)) ** 2)
+        ss_res = np.sum((y_true - y_pred) ** 2, axis=0)
+        ss_tot = np.sum((y_true - np.mean(y_true, axis=0)) ** 2, axis=0)
 
-        if ss_tot == 0:
-            return 0.0
+        # Obsługa dzielenia przez zero, jeśli dane są stałe
+        res = np.zeros_like(ss_res)
+        mask = ss_tot != 0
+        res[mask] = 1.0 - (ss_res[mask] / ss_tot[mask])
 
-        return float(1.0 - ss_res / ss_tot)
+        return res
 
     @staticmethod
     def evaluate(y_true, y_pred):
+        """
+        Zwraca słownik z metrykami rozbitymi na Zbiornik 1 (Y1) i Zbiornik 2 (Y2).
+        Zakłada, że Y ma kształt (N, 2).
+        """
+        # Obliczamy wektory metryk (każdy ma 2 wartości)
+        mse_v = Metrics.mse(y_true, y_pred)
+        rmse_v = Metrics.rmse(y_true, y_pred)
+        mae_v = Metrics.mae(y_true, y_pred)
+        max_v = Metrics.max_error(y_true, y_pred)
+        r2_v = Metrics.r2(y_true, y_pred)
+
+        # Budujemy płaski słownik, który łatwo wpadnie do DataFrame
         return {
-            "MSE": Metrics.mse(y_true, y_pred),
-            "RMSE": Metrics.rmse(y_true, y_pred),
-            "MAE": Metrics.mae(y_true, y_pred),
-            "MAX_ERR": Metrics.max_error(y_true, y_pred),
-            "R2": Metrics.r2(y_true, y_pred),
+            "MSE_Y1": float(mse_v[0]), "MSE_Y2": float(mse_v[1]),
+            "RMSE_Y1": float(rmse_v[0]), "RMSE_Y2": float(rmse_v[1]),
+            "MAE_Y1": float(mae_v[0]), "MAE_Y2": float(mae_v[1]),
+            "MAX_ERR_Y1": float(max_v[0]), "MAX_ERR_Y2": float(max_v[1]),
+            "R2_Y1": float(r2_v[0]), "R2_Y2": float(r2_v[1]),
+            # Opcjonalnie: ogólne średnie, jeśli nadal chcesz mieć szybki podgląd
+            "R2_AVG": float(np.mean(r2_v))
         }
 
     def print_metrics(title, metrics):
@@ -116,7 +131,7 @@ class MetricsSummarizer:
         os.makedirs(full_path_dir, exist_ok=True)
 
         # Plik ląduje bezpośrednio w folderze datasetu
-        path = os.path.join(full_path_dir, f"{dataset}_Test_results.csv")
+        path = os.path.join(full_path_dir, f"{dataset}_Test_results_3.csv")
 
         df = pd.DataFrame.from_dict(self.results, orient='index')
         df.to_csv(path)
@@ -147,7 +162,7 @@ class MetricsSummarizer:
         target_dir = os.path.join(os.getcwd(), folder, dataset)
         os.makedirs(target_dir, exist_ok=True)
 
-        path = os.path.join(target_dir, f"{dataset}_Test_avg_results.csv")
+        path = os.path.join(target_dir, f"{dataset}_Test_avg_results_3.csv")
 
         final_df.to_csv(path)
         print(f"🏆 Średnie wyniki i czasy całkowite zapisane w: {path}")

@@ -4,8 +4,14 @@ from Test.Metrics import Metrics
 
 
 class Tester:
-    def __init__(self, test_objects):
+    def __init__(self, test_objects, clean_reference=None):
+        """
+        test_objects: obiekty wejściowe dla modelu (mogą mieć szum)
+        clean_reference: idealne trajektorie (Ground Truth) do liczenia metryk
+        """
         self.test_objects = test_objects
+        # Jeśli nie podano referencji, używamy obiektów wejściowych (dla wariantu CLEAN)
+        self.clean_reference = clean_reference if clean_reference is not None else test_objects
 
     def run(self, models, summarizer):
         """
@@ -22,9 +28,12 @@ class Tester:
             for i, test_obj in enumerate(test_bar):
                 # 1. Pobieranie danych
                 t_to_sim, u_to_sim, h0_to_sim, dh_dt0_to_sim = test_obj.get_data_to_simulate()
-                _, _, _, dh_dt_true = test_obj.get_data_to_plot()
 
-                # 2. Symulacja (rekurencyjna)
+                # 2. Pobieranie danych referencyjnych (ZAWSZE CLEAN)
+                clean_obj = self.clean_reference[i]
+                _, _, _, dh_dt_true_clean = clean_obj.get_data_to_plot()
+
+                # 3. Symulacja (rekurencyjna)
                 start_time = time.perf_counter()
                 sim_obj = m_obj.simulate(t=t_to_sim, u_new=u_to_sim, h0=h0_to_sim, dh_dt0=dh_dt0_to_sim)
                 end_time = time.perf_counter()
@@ -33,7 +42,7 @@ class Tester:
                 _, _, _, dh_dt_sim = sim_obj.get_data_to_plot()
 
                 # 3. Obliczanie metryk
-                sim_metrics = Metrics.evaluate(dh_dt_true, dh_dt_sim)
+                sim_metrics = Metrics.evaluate(dh_dt_true_clean, dh_dt_sim)
                 sim_metrics['Time [s]'] = duration
                 sim_metrics['Time [min]'] = duration/60
 

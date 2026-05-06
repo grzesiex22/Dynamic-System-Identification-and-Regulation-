@@ -38,9 +38,11 @@ noise_level = 0.05
 dataset_name = "Dataset_test_1"
 
 # --- model - ogólne zmienne ---
+SHOWCASE = False
 TRAIN_AND_SAVE = False
 LOAD = True
 TEST = False
+FINAL_PLOTS = True
 epochs = 500
 patience = 20
 
@@ -185,66 +187,68 @@ for var in available_variants:
 # --------------------------------------------------------------------------------------------------------------------
 print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 30} 5. SHOWCASE DANYCH (INTEGRITY CHECK) {'═' * 15}")
 
-try:
-    # Szukamy, czy w ogóle mamy wariant z szumem do porównania
-    noise_variants = [v for v in available_variants if v["noise"] > 0]
+if SHOWCASE:
+    try:
+        # Szukamy, czy w ogóle mamy wariant z szumem do porównania
+        noise_variants = [v for v in available_variants if v["noise"] > 0]
 
-    # Zawsze bierzemy bazę CLEAN
-    clean_name = "CLEAN"
+        # Zawsze bierzemy bazę CLEAN
+        clean_name = "CLEAN"
 
-    if clean_name in loaded_data and noise_variants:
-        v_noise = noise_variants[-1]["noise"]  # Bierzemy największy szum do pokazu
-        noisy_name = f"NOISY_{v_noise}"  # Dostosuj, jeśli Twoje nazwy wariantów są inne
+        if clean_name in loaded_data and noise_variants:
+            v_noise = noise_variants[-1]["noise"]  # Bierzemy największy szum do pokazu
+            noisy_name = f"NOISY_{v_noise}"  # Dostosuj, jeśli Twoje nazwy wariantów są inne
 
-        # Upewniamy się, że szukany wariant jest w słowniku
-        if noisy_name in loaded_data:
-            print(
-                f"{Fore.YELLOW}🔍 Porównanie typów sygnałów: {Fore.BLUE}CLEAN {Fore.YELLOW}vs {Fore.RED}{noisy_name}")
+            # Upewniamy się, że szukany wariant jest w słowniku
+            if noisy_name in loaded_data:
+                print(
+                    f"{Fore.YELLOW}🔍 Porównanie typów sygnałów: {Fore.BLUE}CLEAN {Fore.YELLOW}vs {Fore.RED}{noisy_name}")
 
-            # Wykorzystujemy Twoją funkcję do znalezienia indeksów (aprbs, multisine, noise)
-            target_indices = get_unique_signal_indices(dataset_name, mode="test", noise_level=0.0)
+                # Wykorzystujemy Twoją funkcję do znalezienia indeksów (aprbs, multisine, noise)
+                target_indices = get_unique_signal_indices(dataset_name, mode="test", noise_level=0.0)
 
-            clean_test_obs = loaded_data[clean_name]["test_obs"]
-            noisy_test_obs = loaded_data[noisy_name]["test_obs"]
+                clean_test_obs = loaded_data[clean_name]["test_obs"]
+                noisy_test_obs = loaded_data[noisy_name]["test_obs"]
 
-            for sig_type, idx in target_indices.items():
-                print(f"  {Fore.GREEN}└─ Generowanie podglądu dla: {Style.BRIGHT}{sig_type.upper()} (index: {idx})")
+                for sig_type, idx in target_indices.items():
+                    print(f"  {Fore.GREEN}└─ Generowanie podglądu dla: {Style.BRIGHT}{sig_type.upper()} (index: {idx})")
 
-                c_obj = clean_test_obs[idx]
-                n_obj = noisy_test_obs[idx]
+                    c_obj = clean_test_obs[idx]
+                    n_obj = noisy_test_obs[idx]
 
-                t_plot, u_plot, h_clean, dh_dt_clean = c_obj.get_data_to_plot()
-                _, _, h_noisy, dh_dt_noisy = n_obj.get_data_to_plot()
+                    t_plot, u_plot, h_clean, dh_dt_clean = c_obj.get_data_to_plot()
+                    _, _, h_noisy, dh_dt_noisy = n_obj.get_data_to_plot()
 
-                v_noise_str = str(noisy_name).replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+                    v_noise_str = str(noisy_name).replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
 
-                SystemPlotter.plot_noise_comparison(
-                    t=t_plot,
-                    u=u_plot,
-                    y_true=h_clean,
-                    dy_dt_true=dh_dt_clean,
-                    y_noise=h_noisy,  # Bezpośrednio macierz
-                    dy_dt_noise=dh_dt_noisy,  # Bezpośrednio macierz
-                    noise_label=f"Zaszumione (std={v_noise})",
-                    title=f"Showcase | Typ: {sig_type.upper()} | Clean vs {noisy_name}",
-                    save_name=f"Showcase_t{idx}_{v_noise_str}_U_{sig_type.upper()}",
-                    dataset=dataset_name,
-                    show=show_showcase_plot
-                )
-            if show_showcase_plot:
-                print(f"{Fore.CYAN}📺 Zamknij wykresy, aby rozpocząć proces uczenia/testowania.")
-                plt.show(block=True)
+                    SystemPlotter.plot_noise_comparison(
+                        t=t_plot,
+                        u=u_plot,
+                        y_true=h_clean,
+                        dy_dt_true=dh_dt_clean,
+                        y_noise=h_noisy,  # Bezpośrednio macierz
+                        dy_dt_noise=dh_dt_noisy,  # Bezpośrednio macierz
+                        noise_label=f"Zaszumione (std={v_noise})",
+                        title=f"Showcase | Typ: {sig_type.upper()} | Clean vs {noisy_name}",
+                        save_name=f"Showcase_t{idx}_{v_noise_str}_U_{sig_type.upper()}",
+                        dataset=dataset_name,
+                        show=show_showcase_plot
+                    )
+                if show_showcase_plot:
+                    print(f"{Fore.CYAN}📺 Zamknij wykresy, aby rozpocząć proces uczenia/testowania.")
+                    plt.show(block=True)
+            else:
+                print(f"{Fore.BLUE}ℹ️  Wariant {noisy_name} nie został załadowany. Pomijam showcase.")
         else:
-            print(f"{Fore.BLUE}ℹ️  Wariant {noisy_name} nie został załadowany. Pomijam showcase.")
-    else:
-        print(f"{Fore.BLUE}ℹ️  Brak danych CLEAN lub NOISY do wykonania porównania.")
+            print(f"{Fore.BLUE}ℹ️  Brak danych CLEAN lub NOISY do wykonania porównania.")
 
-except Exception as e:
-    print(f"{Fore.RED}⚠️ Błąd podczas weryfikacji Showcase: {Fore.WHITE}{e}")
-    import traceback
+    except Exception as e:
+        print(f"{Fore.RED}⚠️ Błąd podczas weryfikacji Showcase: {Fore.WHITE}{e}")
+        import traceback
 
-    traceback.print_exc()
-
+        traceback.print_exc()
+else:
+    print(f"{Fore.YELLOW}Flaga SHOWCASE = {SHOWCASE} - brak pokazu przykładowych wczytanych sygnałów{Style.RESET_ALL}")
 
 # --------------------------------------------------------------------------------------------------------------------
 # 6. Pętla Główna (Trening/Wczytanie)
@@ -297,28 +301,30 @@ for v_name, data in loaded_data.items():
             model_obj.save_model(dataset=dataset_name, base_name=save_id)
             print(Fore.GREEN + f"  💾 Zapisano model: {save_id}")
 
-        # --- Rysowanie krzywej uczenia ---
-        loss_save_name = f"Loss_{model_name}_{v_name}"
-        loss_save_name = loss_save_name.replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+            # --- Rysowanie krzywej uczenia ---
+            loss_save_name = f"Loss_{model_name}_{v_name}"
+            loss_save_name = loss_save_name.replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
 
-        SystemPlotter.plot_learning_curves(
-            history=model_obj.training_history,
-            model_name=model_name,
-            dataset=dataset_name,
-            v_name=v_name,
-            save_name=loss_save_name,
-            show=show_learning_plot
-        )
-
+            SystemPlotter.plot_learning_curves(
+                history=model_obj.training_history,
+                model_name=model_name,
+                dataset=dataset_name,
+                v_name=v_name,
+                save_name=loss_save_name,
+                show=show_learning_plot
+            )
 
 # --------------------------------------------------------------------------------------------------------------------
 # 7. Pętla Główna (Testowanie)
 # --------------------------------------------------------------------------------------------------------------------
-print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 30} 7. TESTOWANIE MODELI {'═' * 19}")
+print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 25} 7. TESTOWANIE MODELI {'═' * 25}")
 
 global_summarizer = MetricsSummarizer()
 
 if TEST:
+    # Pobieramy referencyjne obiekty testowe (te bez szumu)
+    clean_test_obs = loaded_data.get("CLEAN", {}).get("test_obs", None)
+
     # Iterujemy po wczytanych wcześniej danych
     for v_name, data in loaded_data.items():
         print("\n" + Fore.BLUE + Style.BRIGHT + "═" * 80)
@@ -330,7 +336,7 @@ if TEST:
             Fore.MAGENTA + f"📊 Dane: Train={data['X_train'].shape}, Val={data['X_val'].shape}, Test={data['X_test'].shape}")
 
         # Przekazuje całą listę trajektorii testowych-
-        tester = Tester(data["test_obs"])
+        tester = Tester(test_objects=data["test_obs"], clean_reference=clean_test_obs)
         # Przygotowujemy listę modeli z unikalnymi nazwami dla tego wariantu
         models_to_run = []
 
@@ -344,8 +350,7 @@ if TEST:
 
         tester.run(models_to_run, global_summarizer)
 else:
-    print(f"{Fore.YELLOW}Flaga TEST = {TEST} - kończę program{Style.RESET_ALL}")
-    sys.exit(2)
+    print(f"{Fore.YELLOW}Flaga TEST = {TEST} - brak testów{Style.RESET_ALL}")
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -361,63 +366,70 @@ if TEST:
 # --------------------------------------------------------------------------------------------------------------------
 # 9. WYKRESY
 # --------------------------------------------------------------------------------------------------------------------
-print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{'═' * 80}")
-print(f"{Fore.MAGENTA}{Style.BRIGHT}📈 GENEROWANIE WYKRESÓW PORÓWNAWCZYCH DLA TYPÓW SYGNAŁÓW")
-print(f"{Fore.MAGENTA}{Style.BRIGHT}{'═' * 80}")
 
-for var in available_variants:
-    v_name = var["name"]
-    v_noise = var["noise"]
+if FINAL_PLOTS:
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 10} 8. GENEROWANIE WYKRESÓW PORÓWNAWCZYCH DLA TYPÓW SYGNAŁÓW {'═' * 10}")
 
-    print(f"\n{Fore.CYAN}Analiza typów sygnałów dla wariantu: {Style.BRIGHT}{v_name}")
+    # Wczytujemy obiekty CLEAN (noise_level=0.0) raz, aby służyły jako Ground Truth na wykresach
+    clean_test_obs = reader.find_and_read(dataset_name, "test", noise_level=0.0)
 
-    # 1. Znajdź indeksy (aprbs, multisine, noise)
-    target_indices = get_unique_signal_indices(dataset_name, mode="test", noise_level=v_noise)
+    for var in available_variants:
+        v_name = var["name"]
+        v_noise = var["noise"]
 
-    # Ponownie wczytujemy obiekty testowe dla tego wariantu
-    test_obs = reader.find_and_read(dataset_name, "test", noise_level=v_noise)
+        print(f"\n{Fore.CYAN}Analiza typów sygnałów dla wariantu: {Style.BRIGHT}{v_name}")
 
-    for sig_type, idx in target_indices.items():
-        if idx >= len(test_obs): continue
+        # 1. Znajdź indeksy (aprbs, multisine, noise)
+        target_indices = get_unique_signal_indices(dataset_name, mode="test", noise_level=v_noise)
 
-        test_obj = test_obs[idx]
-        t_plot, u_plot, h_true, dh_dt_true = test_obj.get_data_to_plot()
-        t_sim, u_sim, h0, dh0 = test_obj.get_data_to_simulate()
+        # Ponownie wczytujemy obiekty testowe dla tego wariantu
+        test_obs = reader.find_and_read(dataset_name, "test", noise_level=v_noise)
 
-        y_sim_list = []
-        dy_sim_list = []
-        model_names = []
+        for sig_type, idx in target_indices.items():
+            if idx >= len(test_obs): continue
 
-        # 2. Puść symulację dla każdego modelu
-        for m in models:
-            model_obj = m["obj"]
-            # Uwaga: modele muszą być już załadowane/wytrenowane w poprzedniej pętli głównej!
-            sim_res = model_obj.simulate(t=t_sim, u_new=u_sim, h0=h0, dh_dt0=dh0)
+            test_obj = test_obs[idx]
+            t_sim, u_sim, h0, dh0 = test_obj.get_data_to_simulate()
 
-            _, _, h_sim, dh_sim = sim_res.get_data_to_plot()
-            y_sim_list.append(h_sim)
-            dy_sim_list.append(dh_sim)
-            model_names.append(m["name"])
+            clean_obj = clean_test_obs[idx]
+            t_plot, u_plot, h_true_clean, dh_dt_true_clean = clean_obj.get_data_to_plot()
 
-        # 3. Wygeneruj wykres
-        print(f"  {Fore.GREEN}└─ Generowanie wykresu dla: {sig_type.upper()} (index: {idx})")
+            y_sim_list = []
+            dy_sim_list = []
+            model_names = []
 
-        v_noise_str = str(v_name).replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+            # 2. Puść symulację dla każdego modelu
+            for m in models:
+                model_obj = m["obj"]
+                # Uwaga: modele muszą być już załadowane/wytrenowane w poprzedniej pętli głównej!
+                sim_res = model_obj.simulate(t=t_sim, u_new=u_sim, h0=h0, dh_dt0=dh0)
 
-        SystemPlotter.plot(
-            t=t_plot,
-            u=u_plot,
-            y_true=h_true,
-            dy_dt_true=dh_dt_true,
-            y_sim_list=y_sim_list,
-            dy_dt_sim_list=dy_sim_list,
-            legend_sim=model_names,
-            title=f"Porównanie modeli | Typ: {sig_type.upper()} | Wariant: {v_name}",
-            save_name=f"Test_t{idx}_{v_noise_str}_U_{sig_type.upper()}",
-            dataset=dataset_name,
-            show=show_testing_plot
-        )
+                _, _, h_sim, dh_sim = sim_res.get_data_to_plot()
+                y_sim_list.append(h_sim)
+                dy_sim_list.append(dh_sim)
+                model_names.append(m["name"])
 
-print(f"\n{Fore.GREEN}{Style.BRIGHT}✨ Wszystkie wykresy zostały wygenerowane!")
-plt.show(block=True)
+            # 3. Wygeneruj wykres
+            print(f"  {Fore.GREEN}└─ Generowanie wykresu dla: {sig_type.upper()} (index: {idx})")
+
+            v_noise_str = str(v_name).replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+            v_noise_str_2 = str(v_name).replace('_', ' ')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+
+            SystemPlotter.plot(
+                t=t_plot,
+                u=u_plot,
+                y_true=h_true_clean,
+                dy_dt_true=dh_dt_true_clean,
+                y_sim_list=y_sim_list,
+                dy_dt_sim_list=dy_sim_list,
+                legend_sim=model_names,
+                title=f"Porównanie modeli | Typ U: {sig_type.upper()} | Wariant: {v_noise_str_2}",
+                save_name=f"Test_{idx}_{v_noise_str}_{sig_type.upper()}____focus",
+                dataset=dataset_name,
+                show=show_testing_plot,
+                x_lim=[0, 450]
+            )
+
+    print(f"\n{Fore.GREEN}{Style.BRIGHT}✨ Wszystkie wykresy zostały wygenerowane!")
+    plt.show(block=True)
 
