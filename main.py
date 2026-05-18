@@ -1,3 +1,4 @@
+import copy
 import sys
 from colorama import Fore, Back, Style, init
 import numpy as np
@@ -39,24 +40,25 @@ dataset_name = "Dataset_test_1"
 
 # --- model - ogólne zmienne ---
 SHOWCASE = False
-TRAIN_AND_SAVE = False
-LOAD = True
-TEST = True
-FINAL_PLOTS = True
+TRAIN_AND_SAVE = True
+LOAD = False
+TEST = False
+FINAL_PLOTS = False
 epochs = 500
 patience = 20
 
 # --- Konfiguracja modeli ---
 # Słownik konfiguracji model
-models = [
+models_config = [
     {"obj": TorchSytsemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Torch_MLP"},
     {"obj": OwnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Own_MLP"},
     # {"obj": SklearnSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Sklearn_MLP"},
     # {"obj": KerasSystemMLP(input_dim=5, hidden_dim=128, output_dim=2), "name": "Keras_MLP"},
     {"obj": TorchLSTMSystem(input_dim=5, hidden_dim=64, output_dim=2, seq_len=10, num_layers=1), "name": "Torch_LSTM"},
     {"obj": RegressionSystemModel(input_dim=5, output_dim=2, alpha=1.0), "name": "Ridge_Regression"},
-
 ]
+
+models = []
 
 # --- wykresy ---
 show_showcase_plot = False
@@ -282,9 +284,10 @@ for v_name, data in loaded_data.items():
         Fore.MAGENTA + f"📊 Dane Y: Train={data['Y_train'].shape}, Val={data['Y_val'].shape}, Test={data['Y_test'].shape}")
 
     # --- Uczenie / wczytanie modeli ---
-    for m in models:
-        model_obj = m["obj"]
-        model_name = m["name"]
+    for m_cfg in models_config:
+        # Tworzymy nową, niezależną instancję modelu dla tego konkretnego wariantu danych
+        model_obj = copy.deepcopy(m_cfg["obj"])
+        model_name = m_cfg["name"]
 
         print(f"\n{Fore.WHITE + Back.BLUE + Style.BRIGHT} 🧠 MODEL: {model_name} ")
         save_id = f"{dataset_name}_{v_name}_{model_name}"
@@ -314,6 +317,17 @@ for v_name, data in loaded_data.items():
                 show=show_learning_plot
             )
 
+        # Dodajemy gotowy model do listy 'models'
+        # Zapisujemy go z unikalną nazwą, żeby wiedzieć który jest który (np. "Torch_LSTM_NOISE_0.05")
+        models.append({
+            "obj": model_obj,
+            "name": f"{model_name}_{v_name}",
+            "variant": v_name,
+            "base_name": model_name
+        })
+
+print(f"\n{Fore.GREEN}✅ Proces zakończony. Liczba aktywnych modeli w pamięci: {len(models)}")
+
 # --------------------------------------------------------------------------------------------------------------------
 # 7. Pętla Główna (Testowanie)
 # --------------------------------------------------------------------------------------------------------------------
@@ -341,12 +355,13 @@ if TEST:
         # Przygotowujemy listę modeli z unikalnymi nazwami dla tego wariantu
         models_to_run = []
 
-        print(f"\n{Fore.YELLOW}🧪 Rozpoczynam testy dla {v_name}...")
+        print(f"\n{Fore.YELLOW}🧪 Rozpoczynam testy dla dataset {dataset_name} - {v_name}...")
         for m in models:
             # Dodajemy informację o wariancie do nazwy w tabeli raportu
             models_to_run.append({
                 "obj": m["obj"],
-                "name": f"{m['name']}_{v_name}"
+                "model_name": f"{m['name']}",
+                "dataset_kind": v_name
             })
 
         tester.run(models_to_run, global_summarizer_dhdt, global_summarizer_h)
@@ -361,34 +376,29 @@ if TEST:
     print(f"\n{Fore.CYAN}{Style.BRIGHT}{'-' * 15} METRYKI DH_DT (pochodne poziomu w zbiornikach) {'-' * 15}")
     # global_summarizer.show_all()
     global_summarizer_dhdt.show_averages()
-    global_summarizer_dhdt.save_all_to_file(dataset=dataset_name, save_name_sufix="_dh_dt")  # Zapis do pliku
-    global_summarizer_dhdt.save_averages_to_file(dataset=dataset_name, save_name_sufix="_dh_dt")
+    global_summarizer_dhdt.save_all_to_file(dataset=dataset_name, save_name_sufix="_dh_dt12")  # Zapis do pliku
+    global_summarizer_dhdt.save_averages_to_file(dataset=dataset_name, save_name_sufix="_dh_dt12")
 
     print(f"\n{Fore.CYAN}{Style.BRIGHT}{'-' * 15} METRYKI H (poziom w zbiornikach){'-' * 15}")
     global_summarizer_h.show_averages()
-    global_summarizer_h.save_all_to_file(dataset=dataset_name, save_name_sufix="_h")  # Zapis do pliku
-    global_summarizer_h.save_averages_to_file(dataset=dataset_name, save_name_sufix="_h")
+    global_summarizer_h.save_all_to_file(dataset=dataset_name, save_name_sufix="_h12")  # Zapis do pliku
+    global_summarizer_h.save_averages_to_file(dataset=dataset_name, save_name_sufix="_h12")
 
 # --------------------------------------------------------------------------------------------------------------------
 # 9. WYKRESY
 # --------------------------------------------------------------------------------------------------------------------
 
 if FINAL_PLOTS:
-    print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 10} 8. GENEROWANIE WYKRESÓW PORÓWNAWCZYCH DLA TYPÓW SYGNAŁÓW {'═' * 10}")
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 10} 8. GENEROWANIE WYKRESÓW PORÓWNAWCZYCH {'═' * 10}")
 
-    # Wczytujemy obiekty CLEAN (noise_level=0.0) raz, aby służyły jako Ground Truth na wykresach
     clean_test_obs = reader.find_and_read(dataset_name, "test", noise_level=0.0)
 
     for var in available_variants:
-        v_name = var["name"]
+        v_name = var["name"]  # To jest wariant DANYCH TESTOWYCH (np. CLEAN lub NOISY)
         v_noise = var["noise"]
 
-        print(f"\n{Fore.CYAN}Analiza typów sygnałów dla wariantu: {Style.BRIGHT}{v_name}")
-
-        # 1. Znajdź indeksy (aprbs, multisine, noise)
+        print(f"\n{Fore.CYAN}Analiza dla danych testowych: {Style.BRIGHT}{v_name}")
         target_indices = get_unique_signal_indices(dataset_name, mode="test", noise_level=v_noise)
-
-        # Ponownie wczytujemy obiekty testowe dla tego wariantu
         test_obs = reader.find_and_read(dataset_name, "test", noise_level=v_noise)
 
         for sig_type, idx in target_indices.items():
@@ -396,46 +406,52 @@ if FINAL_PLOTS:
 
             test_obj = test_obs[idx]
             t_sim, u_sim, h0, dh0 = test_obj.get_data_to_simulate()
-
             clean_obj = clean_test_obs[idx]
             t_plot, u_plot, h_true_clean, dh_dt_true_clean = clean_obj.get_data_to_plot()
 
-            y_sim_list = []
-            dy_sim_list = []
-            model_names = []
+            # --- KLUCZOWA ZMIANA: Grupowanie modeli według wariantu treningowego ---
+            # Wyciągamy unikalne warianty treningowe, które mamy w liście models
+            training_variants = list(set(m["variant"] for m in models))
 
-            # 2. Puść symulację dla każdego modelu
-            for m in models:
-                model_obj = m["obj"]
-                # Uwaga: modele muszą być już załadowane/wytrenowane w poprzedniej pętli głównej!
-                sim_res = model_obj.simulate(t=t_sim, u_new=u_sim, h0=h0, dh_dt0=dh0)
+            for t_variant in training_variants:
+                y_sim_list = []
+                dy_sim_list = []
+                model_names = []
 
-                _, _, h_sim, dh_sim = sim_res.get_data_to_plot()
-                y_sim_list.append(h_sim)
-                dy_sim_list.append(dh_sim)
-                model_names.append(m["name"])
+                # Filtrujemy modele: bierzemy tylko te, które były uczone na t_variant
+                filtered_models = [m for m in models if m["variant"] == t_variant]
 
-            # 3. Wygeneruj wykres
-            print(f"  {Fore.GREEN}└─ Generowanie wykresu dla: {sig_type.upper()} (index: {idx})")
+                for m in filtered_models:
+                    model_obj = m["obj"]
+                    sim_res = model_obj.simulate(t=t_sim, u_new=u_sim, h0=h0, dh_dt0=dh0)
+                    _, _, h_sim, dh_sim = sim_res.get_data_to_plot()
 
-            v_noise_str = str(v_name).replace('.', '_')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
-            v_noise_str_2 = str(v_name).replace('_', ' ')  # Zamiana 0.5 na 0_5 (bezpieczniej w nazwach plików)
+                    y_sim_list.append(h_sim)
+                    dy_sim_list.append(dh_sim)
+                    # Używamy base_name (np. Torch_LSTM), bo wariant jest już w tytule
+                    model_names.append(m["base_name"])
 
-            SystemPlotter.plot(
-                t=t_plot,
-                u=u_plot,
-                y_true=h_true_clean,
-                dy_dt_true=dh_dt_true_clean,
-                y_sim_list=y_sim_list,
-                dy_dt_sim_list=dy_sim_list,
-                legend_sim=model_names,
-                title=f"Porównanie modeli | Typ U: {sig_type.upper()} | Wariant: {v_noise_str_2}",
-                save_name=f"Test_{idx}_{v_noise_str}_{sig_type.upper()}____focus",
-                dataset=dataset_name,
-                show=show_testing_plot,
-                x_lim=[0, 450]
-            )
+                # Generowanie wykresu dla danej grupy
+                print(f"  {Fore.GREEN}└─ Wykres dla: {sig_type.upper()} | Modele uczone na: {t_variant}")
 
-    print(f"\n{Fore.GREEN}{Style.BRIGHT}✨ Wszystkie wykresy zostały wygenerowane!")
+                v_name_safe = str(v_name).replace('.', '_')
+                v_name_title = str(v_name).replace('.', ' ')
+                t_var_safe = str(t_variant).replace('.', '_')
+
+                SystemPlotter.plot(
+                    t=t_plot,
+                    u=u_plot,
+                    y_true=h_true_clean,
+                    dy_dt_true=dh_dt_true_clean,
+                    y_sim_list=y_sim_list,
+                    dy_dt_sim_list=dy_sim_list,
+                    legend_sim=model_names,
+                    title=f"Test na: {v_name} | Modele uczone na: {t_variant} | U: {sig_type.upper()}",
+                    save_name=f"Test_{idx}_Train_{t_var_safe}_TestData_{v_name_safe}_U_{sig_type.upper()}",
+                    dataset=dataset_name,
+                    show=show_testing_plot,
+                    x_lim=[0, 450]
+                )
+
+    print(f"\n{Fore.GREEN}{Style.BRIGHT}✨ Wykresy rozdzielone pomyślnie!")
     plt.show(block=True)
-

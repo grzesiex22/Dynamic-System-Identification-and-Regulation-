@@ -20,7 +20,8 @@ class Tester:
         """
         for model in models:
             m_obj = model["obj"]
-            m_name = model["name"]
+            m_name = model["model_name"]
+            dataset_kind = model["dataset_kind"]
 
             # Pasek postępu po trajektoriach dla danego modelu
             test_bar = tqdm(self.test_objects, desc=f"Testowanie {m_name}", unit="traj")
@@ -48,7 +49,7 @@ class Tester:
                 sim_metrics_dy['Time [min]'] = duration/60
 
                 # 5. Dodawanie do wspólnego summarizera
-                summarizer_dy.add_metrics(i, m_name, sim_metrics_dy)
+                summarizer_dy.add_metrics(i, m_name, dataset_kind, sim_metrics_dy)
 
                 if summarizer_y:
                     # 6. Obliczanie metryk wartości (nie pochodne)
@@ -58,4 +59,4 @@ class Tester:
                     sim_metrics_y['Time [min]'] = duration/60
 
                     # 7. Dodawanie do wspólnego summarizera
-                    summarizer_y.add_metrics(i, m_name, sim_metrics_y)
+                    summarizer_y.add_metrics(i, m_name, dataset_kind, sim_metrics_y)

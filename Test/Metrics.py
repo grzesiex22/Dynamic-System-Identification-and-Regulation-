@@ -112,11 +112,11 @@ class MetricsSummarizer:
         # Słownik przechowujący metryki: { 'Nazwa Modelu': { 'MSE': 0.1, ... } }
         self.results = {}
 
-    def add_metrics(self, traj_idx, model_name, metrics_dict):
+    def add_metrics(self, traj_idx, model_name, dataset_kind, metrics_dict):
         """
             Dodaje metryki dla konkretnego modelu.
         """
-        key = (f"Trajektoria {traj_idx}", model_name)
+        key = (f"Trajektoria {traj_idx}", model_name, dataset_kind)
         self.results[key] = metrics_dict
 
     def get_best_model(self, metric_name="MSE"):
@@ -147,11 +147,11 @@ class MetricsSummarizer:
 
         # 1. Tworzymy DF i rozbijamy MultiIndex na kolumny
         df = pd.DataFrame.from_dict(self.results, orient='index').reset_index()
-        df.columns = ['Traj', 'Model'] + list(df.columns[2:])
+        df.columns = ['Traj', 'Model', "Dataset_kind"] + list(df.columns[3:])
 
         # 2. Grupowanie po modelu i liczenie średniej
         # numeric_only=True pominie kolumnę 'Traj' automatycznie
-        avg_df = df.groupby('Model').mean(numeric_only=True)
+        avg_df = df.groupby(['Model', 'Dataset_kind']).mean(numeric_only=True)
 
         return avg_df
 
@@ -162,11 +162,15 @@ class MetricsSummarizer:
 
         # Plik ląduje bezpośrednio w folderze datasetu
         if save_name_sufix is None:
-            path = os.path.join(full_path_dir, f"{dataset}_Test_results.csv")
+            filename = f"{dataset}_Test_results.csv"
         else:
-            path = os.path.join(full_path_dir, f"{dataset}_Test_results{save_name_sufix}.csv")
+            filename = f"{dataset}_Test_results{save_name_sufix}.csv"
+
+        path = os.path.join(full_path_dir, filename)
 
         df = pd.DataFrame.from_dict(self.results, orient='index')
+        df.index.names = ['Traj', 'Model', 'Dataset_kind']
+
         df.to_csv(path)
         print(f"💾 Metryki zapisane w: {path}")
 
@@ -176,19 +180,20 @@ class MetricsSummarizer:
         """
         avg_df = self.get_overall_average()
         if avg_df is None:
+            print("Brak danych (funkcja save_averages_to_file()")
             return
 
         # 1. Obliczamy sumaryczne czasy (tak samo jak w show_averages)
         df_temp = pd.DataFrame.from_dict(self.results, orient='index').reset_index()
-        df_temp.columns = ['Traj', 'Model'] + list(df_temp.columns[2:])
+        df_temp.columns = ['Traj', 'Model', 'Dataset_kind'] + list(df_temp.columns[3:])
 
         # Grupowanie i sumowanie czasów
-        total_times = df_temp.groupby('Model')[['Time [s]', 'Time [min]']].sum()
+        total_times = df_temp.groupby(['Model', 'Dataset_kind'])[['Time [s]', 'Time [min]']].sum()
         # Zmiana nazw kolumn, żeby w CSV było jasne, że to sumy
         total_times.columns = ['Total Time [s]', 'Total Time [min]']
 
         # 2. Łączymy średnie metryki z sumarycznymi czasami
-        # Oba DataFrame'y mają 'Model' jako indeks, więc zadziała proste join/concat
+        # avg_df po get_overall_average() ma Model i Dataset_kind jako indeks (lub kolumny)
         final_df = pd.concat([avg_df, total_times], axis=1)
 
         # 3. Przygotowanie ścieżki i zapis
@@ -196,9 +201,11 @@ class MetricsSummarizer:
         os.makedirs(full_path_dir, exist_ok=True)
 
         if save_name_sufix is None:
-            path = os.path.join(full_path_dir, f"{dataset}_Test_avg_results.csv")
+            filename = f"{dataset}_Test_avg_results.csv"
         else:
-            path = os.path.join(full_path_dir, f"{dataset}_Test_avg_results{save_name_sufix}.csv")
+            filename = f"{dataset}_Test_avg_results{save_name_sufix}.csv"
+
+        path = os.path.join(full_path_dir, filename)
 
         final_df.to_csv(path)
         print(f"🏆 Średnie wyniki i czasy całkowite zapisane w: {path}")
@@ -212,43 +219,47 @@ class MetricsSummarizer:
             print("Brak danych do uśrednienia.")
             return
 
-        # Obliczamy sumę czasów (ogólny czas pracy modelu)
-        # Tworzymy roboczy DF, żeby łatwo wyciągnć sumę
+        # Upewniamy się, że avg_df ma ustawiony MultiIndex do łatwego wyciągania czasów
+        if not isinstance(avg_df.index, pd.MultiIndex):
+            avg_df = avg_df.set_index(['Model', 'Dataset_kind'])
+
+        # Obliczamy sumy czasów
         df_temp = pd.DataFrame.from_dict(self.results, orient='index').reset_index()
-        df_temp.columns = ['Traj', 'Model'] + list(df_temp.columns[2:])
-        total_times_s = df_temp.groupby('Model')['Time [s]'].sum()
-        total_times_min = df_temp.groupby('Model')['Time [min]'].sum()
+        df_temp.columns = ['Traj', 'Model', 'Dataset_kind'] + list(df_temp.columns[3:])
+
+        times = df_temp.groupby(['Model', 'Dataset_kind'])[['Time [s]', 'Time [min]']].sum()
 
         # KONFIGURACJA SZEROKOŚCI
-        first_col_w = 20  # Dla kolumny "Model"
-        rest_col_w = 16  # Dla wszystkich metryk i czasów
-        # Nagłówki
+        model_col_w = 29
+        kind_col_w = 10
+        rest_col_w = 14
+
         metrics_headers = list(avg_df.columns)
         time_headers = ["Total Time [s]", "Total Time [min]"]
 
-        # Budowanie nagłówka (string)
-        header_str = f"{'Model':^{first_col_w}} | "
+        # Nagłówek tabeli
+        header_str = f"{'Model':<{model_col_w}} | {'Wariant':<{kind_col_w}} | "
         header_str += " | ".join(f"{h:^{rest_col_w}}" for h in metrics_headers + time_headers)
 
         total_w = len(header_str) + 4
         line = "═" * total_w
 
         print("\n" + line)
-        print(f"║{'📊 ŚREDNIE WYNIKI ZBIORCZE'.center(total_w - 3)}║")
+        print(f"║{'📊 ŚREDNIE WYNIKI ZBIORCZE'.center(total_w - 2)}║")
         print(line)
         print(f"| {header_str} |")
         print("-" * total_w)
 
-        for model_name, row in avg_df.iterrows():
-            # 1. Nazwa modelu (pierwsza kolumna)
-            row_str = f"{model_name:<{first_col_w}} | "
+        for (m_name, v_name), row in avg_df.iterrows():
+            # 1. Nazwa modelu i wariantu (rozpakowane z krotki)
+            row_str = f"{m_name:<{model_col_w}} | {v_name:<{kind_col_w}} | "
 
             # 2. Metryki (średnie)
             row_str += " | ".join(f"{v:^{rest_col_w}.8f}" for v in row)
 
-            # 3. Czasy (sumy)
-            t_s = total_times_s[model_name]
-            t_m = total_times_min[model_name]
+            # 3. Czasy (pobierane z zsumowanego DF za pomocą klucza z krotki)
+            t_s = times.loc[(m_name, v_name), 'Time [s]']
+            t_m = times.loc[(m_name, v_name), 'Time [min]']
             row_str += f" | {t_s:^{rest_col_w}.4f} | {t_m:^{rest_col_w}.4f}"
 
             print(f"| {row_str} |")
@@ -272,7 +283,7 @@ class MetricsSummarizer:
 
         # Przygotowanie nagłówków
         # df.columns zawiera już "Time [s]" i "Time [min]", bo dodaliśmy je w run()
-        columns = ["Trajektoria", "Model"] + list(df.columns)
+        columns = ["Trajektoria", "Model", "Dataset_kind"] + list(df.columns)
 
         header_str = f"{columns[0]:^{first_col_w}} | {columns[1]:^{rest_col_w}}"
         for col in columns[2:]:
