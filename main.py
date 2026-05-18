@@ -41,7 +41,7 @@ dataset_name = "Dataset_test_1"
 SHOWCASE = False
 TRAIN_AND_SAVE = False
 LOAD = True
-TEST = False
+TEST = True
 FINAL_PLOTS = True
 epochs = 500
 patience = 20
@@ -319,7 +319,8 @@ for v_name, data in loaded_data.items():
 # --------------------------------------------------------------------------------------------------------------------
 print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * 25} 7. TESTOWANIE MODELI {'═' * 25}")
 
-global_summarizer = MetricsSummarizer()
+global_summarizer_dhdt = MetricsSummarizer()
+global_summarizer_h = MetricsSummarizer()
 
 if TEST:
     # Pobieramy referencyjne obiekty testowe (te bez szumu)
@@ -348,7 +349,7 @@ if TEST:
                 "name": f"{m['name']}_{v_name}"
             })
 
-        tester.run(models_to_run, global_summarizer)
+        tester.run(models_to_run, global_summarizer_dhdt, global_summarizer_h)
 else:
     print(f"{Fore.YELLOW}Flaga TEST = {TEST} - brak testów{Style.RESET_ALL}")
 
@@ -357,11 +358,16 @@ else:
 # 8. RAPORT
 # --------------------------------------------------------------------------------------------------------------------
 if TEST:
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}{'-' * 15} METRYKI DH_DT (pochodne poziomu w zbiornikach) {'-' * 15}")
     # global_summarizer.show_all()
-    global_summarizer.show_averages()
-    global_summarizer.save_all_to_file(dataset=dataset_name)  # Zapis do pliku
-    global_summarizer.save_averages_to_file(dataset=dataset_name)
+    global_summarizer_dhdt.show_averages()
+    global_summarizer_dhdt.save_all_to_file(dataset=dataset_name, save_name_sufix="_dh_dt")  # Zapis do pliku
+    global_summarizer_dhdt.save_averages_to_file(dataset=dataset_name, save_name_sufix="_dh_dt")
 
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}{'-' * 15} METRYKI H (poziom w zbiornikach){'-' * 15}")
+    global_summarizer_h.show_averages()
+    global_summarizer_h.save_all_to_file(dataset=dataset_name, save_name_sufix="_h")  # Zapis do pliku
+    global_summarizer_h.save_averages_to_file(dataset=dataset_name, save_name_sufix="_h")
 
 # --------------------------------------------------------------------------------------------------------------------
 # 9. WYKRESY

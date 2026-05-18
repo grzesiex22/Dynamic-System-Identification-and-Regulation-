@@ -44,28 +44,58 @@ class Metrics:
         return res
 
     @staticmethod
-    def evaluate(y_true, y_pred):
+    def iae(y_true, y_pred, dt=1.0):
+        """
+        Integral Absolute Error (IAE).
+        IAE = sum(|y_true - y_pred|) * dt
+        """
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+
+        # Obliczamy sumę modułów różnic i mnożymy przez krok czasu
+        # axis=0 liczy sumę dla każdego sygnału wyjściowego osobno
+        return np.sum(np.abs(y_true - y_pred), axis=0) * dt
+
+    @staticmethod
+    def evaluate(y_true, y_pred, t, suffixes=None):
         """
         Zwraca słownik z metrykami rozbitymi na Zbiornik 1 (Y1) i Zbiornik 2 (Y2).
         Zakłada, że Y ma kształt (N, 2).
         """
-        # Obliczamy wektory metryk (każdy ma 2 wartości)
+
+        # Jeśli nie podano sufiksów, generujemy domyślne (Y1, Y2, ...)
+        num_signals = y_true.shape[1] if len(y_true.shape) > 1 else 1
+        if suffixes is None:
+            suffixes = [f"_Y{i + 1}" for i in range(num_signals)]
+
+        if len(suffixes) != num_signals:
+            raise ValueError(f"Liczba sufiksów ({len(suffixes)}) musi odpowiadać liczbie sygnałów ({num_signals})")
+
+        # Obliczamy wektory metryk
         mse_v = Metrics.mse(y_true, y_pred)
         rmse_v = Metrics.rmse(y_true, y_pred)
         mae_v = Metrics.mae(y_true, y_pred)
         max_v = Metrics.max_error(y_true, y_pred)
         r2_v = Metrics.r2(y_true, y_pred)
 
-        # Budujemy płaski słownik, który łatwo wpadnie do DataFrame
-        return {
-            "MSE_Y1": float(mse_v[0]), "MSE_Y2": float(mse_v[1]),
-            "RMSE_Y1": float(rmse_v[0]), "RMSE_Y2": float(rmse_v[1]),
-            "MAE_Y1": float(mae_v[0]), "MAE_Y2": float(mae_v[1]),
-            "MAX_ERR_Y1": float(max_v[0]), "MAX_ERR_Y2": float(max_v[1]),
-            "R2_Y1": float(r2_v[0]), "R2_Y2": float(r2_v[1]),
-            # Opcjonalnie: ogólne średnie, jeśli nadal chcesz mieć szybki podgląd
-            "R2_AVG": float(np.mean(r2_v))
-        }
+        dt = t[1] - t[0]
+        iae_v = Metrics.iae(y_true, y_pred, dt=dt)
+
+        # Budujemy słownik dynamicznie
+        results = {}
+        for i, sfx in enumerate(suffixes):
+            results[f"MSE{sfx}"] = float(mse_v[i])
+            results[f"RMSE{sfx}"] = float(rmse_v[i])
+            results[f"MAE{sfx}"] = float(mae_v[i])
+            results[f"MAX_ERR{sfx}"] = float(max_v[i])
+            results[f"IAE{sfx}"] = float(iae_v[i])
+            results[f"R2{sfx}"] = float(r2_v[i])
+
+        # Dodajemy metryki uśrednione (ogólne)
+        results["R2_AVG"] = float(np.mean(r2_v))
+        results["MSE_AVG"] = float(np.mean(mse_v))
+
+        return results
 
     def print_metrics(title, metrics):
         print(f"\n=== {title} ===")
@@ -125,19 +155,22 @@ class MetricsSummarizer:
 
         return avg_df
 
-    def save_all_to_file(self, dataset="Dataset1", folder="Results"):
+    def save_all_to_file(self, dataset="Dataset1", folder="Results", save_name_sufix=None):
         # Tworzymy ścieżkę: Results/Dataset1
         full_path_dir = os.path.join(os.getcwd(), folder, dataset)
         os.makedirs(full_path_dir, exist_ok=True)
 
         # Plik ląduje bezpośrednio w folderze datasetu
-        path = os.path.join(full_path_dir, f"{dataset}_Test_results_3.csv")
+        if save_name_sufix is None:
+            path = os.path.join(full_path_dir, f"{dataset}_Test_results.csv")
+        else:
+            path = os.path.join(full_path_dir, f"{dataset}_Test_results{save_name_sufix}.csv")
 
         df = pd.DataFrame.from_dict(self.results, orient='index')
         df.to_csv(path)
         print(f"💾 Metryki zapisane w: {path}")
 
-    def save_averages_to_file(self, dataset="Dataset1", folder="Results"):
+    def save_averages_to_file(self, dataset="Dataset1", folder="Results", save_name_sufix=None):
         """
         Zapisuje uśrednione wyniki oraz całkowite czasy pracy modeli do pliku CSV.
         """
@@ -159,10 +192,13 @@ class MetricsSummarizer:
         final_df = pd.concat([avg_df, total_times], axis=1)
 
         # 3. Przygotowanie ścieżki i zapis
-        target_dir = os.path.join(os.getcwd(), folder, dataset)
-        os.makedirs(target_dir, exist_ok=True)
+        full_path_dir = os.path.join(os.getcwd(), folder, dataset)
+        os.makedirs(full_path_dir, exist_ok=True)
 
-        path = os.path.join(target_dir, f"{dataset}_Test_avg_results_3.csv")
+        if save_name_sufix is None:
+            path = os.path.join(full_path_dir, f"{dataset}_Test_avg_results.csv")
+        else:
+            path = os.path.join(full_path_dir, f"{dataset}_Test_avg_results{save_name_sufix}.csv")
 
         final_df.to_csv(path)
         print(f"🏆 Średnie wyniki i czasy całkowite zapisane w: {path}")

@@ -13,7 +13,7 @@ class Tester:
         # Jeśli nie podano referencji, używamy obiektów wejściowych (dla wariantu CLEAN)
         self.clean_reference = clean_reference if clean_reference is not None else test_objects
 
-    def run(self, models, summarizer):
+    def run(self, models, summarizer_dy, summarizer_y=None):
         """
         models: lista słowników [{"obj": model, "name": "ModelA"}, ...]
         summarizer: wspólny obiekt MetricsSummarizer
@@ -31,7 +31,7 @@ class Tester:
 
                 # 2. Pobieranie danych referencyjnych (ZAWSZE CLEAN)
                 clean_obj = self.clean_reference[i]
-                _, _, _, dh_dt_true_clean = clean_obj.get_data_to_plot()
+                t_true_clean, _, h_true_clean, dh_dt_true_clean = clean_obj.get_data_to_plot()
 
                 # 3. Symulacja (rekurencyjna)
                 start_time = time.perf_counter()
@@ -39,12 +39,23 @@ class Tester:
                 end_time = time.perf_counter()
                 duration = end_time - start_time
 
-                _, _, _, dh_dt_sim = sim_obj.get_data_to_plot()
+                _, _, h_sim, dh_dt_sim = sim_obj.get_data_to_plot()
 
-                # 3. Obliczanie metryk
-                sim_metrics = Metrics.evaluate(dh_dt_true_clean, dh_dt_sim)
-                sim_metrics['Time [s]'] = duration
-                sim_metrics['Time [min]'] = duration/60
+                # 4. Obliczanie metryk pochodnych
+                sim_metrics_dy = Metrics.evaluate(dh_dt_true_clean, dh_dt_sim,
+                                                  t=t_true_clean, suffixes=["_dh1_dt", "_dh2_dt"])
+                sim_metrics_dy['Time [s]'] = duration
+                sim_metrics_dy['Time [min]'] = duration/60
 
-                # 4. Dodawanie do wspólnego summarizera
-                summarizer.add_metrics(i, m_name, sim_metrics)
+                # 5. Dodawanie do wspólnego summarizera
+                summarizer_dy.add_metrics(i, m_name, sim_metrics_dy)
+
+                if summarizer_y:
+                    # 6. Obliczanie metryk wartości (nie pochodne)
+                    sim_metrics_y = Metrics.evaluate(h_true_clean, h_sim,
+                                                     t=t_true_clean, suffixes=["_h1", "_h2"])
+                    sim_metrics_y['Time [s]'] = duration
+                    sim_metrics_y['Time [min]'] = duration/60
+
+                    # 7. Dodawanie do wspólnego summarizera
+                    summarizer_y.add_metrics(i, m_name, sim_metrics_y)
