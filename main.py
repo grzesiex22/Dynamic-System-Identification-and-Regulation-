@@ -40,10 +40,10 @@ dataset_name = "Dataset_test_1"
 
 # --- model - ogólne zmienne ---
 SHOWCASE = False
-TRAIN_AND_SAVE = True
-LOAD = False
-TEST = False
-FINAL_PLOTS = False
+TRAIN_AND_SAVE = False
+LOAD = True
+TEST = True
+FINAL_PLOTS = True
 epochs = 500
 patience = 20
 
